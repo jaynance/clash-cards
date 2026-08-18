@@ -307,7 +307,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.33 Badge OCR First + Extended Search -->
+<!-- Production build: V8.34 Paired Trade Offer UI -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -344,6 +344,25 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 
 .username-review-warning{margin:0 0 10px;padding:9px 11px;border:1px solid #d59b29;border-radius:8px;background:#fff8e5;color:#664d00}
 .username-review-required{border:2px solid #d59b29!important;background:#fffdf5}
+
+.trade-builder{border:1px solid #c9ced8;border-radius:12px;background:#fff;padding:16px;margin:16px 0}
+.trade-builder h4{margin:0 0 10px}
+.trade-builder-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:start}
+.trade-choice-panel{background:#f7f8fa;border:1px solid #dde1e7;border-radius:10px;padding:12px;min-height:170px}
+.trade-choice-panel h5{margin:0 0 9px;font-size:.95rem}
+.trade-choice-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px}
+.trade-choice{position:relative;display:block}
+.trade-choice input{position:absolute;opacity:0;pointer-events:none}
+.trade-choice-card{display:block;border:2px solid #d8dce3;border-radius:9px;background:#fff;padding:10px;cursor:pointer;min-height:74px;transition:border-color .15s,box-shadow .15s,background .15s}
+.trade-choice-card strong{display:block;margin-bottom:4px}
+.trade-choice-card small{color:#666}
+.trade-choice input:checked + .trade-choice-card{border-color:#315da8;background:#eef4ff;box-shadow:0 0 0 2px rgba(49,93,168,.12)}
+.trade-arrow{font-size:2rem;font-weight:800;align-self:center;color:#777;padding-top:42px}
+.trade-builder-summary{margin-top:12px;padding:10px 12px;border-radius:8px;background:#f5f8ff;border:1px solid #c8d6ed}
+.trade-builder-actions{display:flex;justify-content:flex-end;margin-top:12px}
+.trade-builder-actions button:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:800px){.trade-builder-grid{grid-template-columns:1fr}.trade-arrow{transform:rotate(90deg);padding:0;text-align:center}}
+
 </style>
 </head>
 <body data-logged-in-player="<?= h($_SESSION['display_name'] ?? '') ?>">
@@ -807,14 +826,99 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
         const lines=list=>list.length?list.map(t=>`<div class="optimized-transfer">${Number(t.qty)} × <strong>${esc(t.card_name)}</strong></div>`).join(''):'<div class="player-meta">None</div>';
         let action='';
         if(outgoing.length&&incoming.length){
-            const options=[];
-            outgoing.forEach(give=>incoming.forEach(receive=>options.push(`<div class="optimized-proposal"><div class="optimized-proposal-text">Give <strong>${Number(give.qty)} × ${esc(give.card_name)}</strong> and receive <strong>${Number(receive.qty)} × ${esc(receive.card_name)}</strong>.</div><form method="post"><input type="hidden" name="propose_trade" value="1"><input type="hidden" name="view_player_id" value="${playerId}"><input type="hidden" name="other_player_id" value="${Number(other.id)}"><input type="hidden" name="give_card_id" value="${Number(give.card_id)}"><input type="hidden" name="give_qty" value="${Number(give.qty)}"><input type="hidden" name="receive_card_id" value="${Number(receive.card_id)}"><input type="hidden" name="receive_qty" value="${Number(receive.qty)}"><button type="submit" class="primary">Propose trade</button></form></div>`)));
-            action=`<h4>Optimized proposal choices</h4>${options.join('')}`;
+            const giveChoices=outgoing.map((give,i)=>`
+              <label class="trade-choice">
+                <input type="radio" name="optimizer_give" value="${i}" ${i===0?'checked':''}>
+                <span class="trade-choice-card">
+                  <strong>${Number(give.qty)} × ${esc(give.card_name)}</strong>
+                  <small>Offer to ${esc(other.name)}</small>
+                </span>
+              </label>`).join('');
+
+            const receiveChoices=incoming.map((receive,i)=>`
+              <label class="trade-choice">
+                <input type="radio" name="optimizer_receive" value="${i}" ${i===0?'checked':''}>
+                <span class="trade-choice-card">
+                  <strong>${Number(receive.qty)} × ${esc(receive.card_name)}</strong>
+                  <small>Request from ${esc(other.name)}</small>
+                </span>
+              </label>`).join('');
+
+            action=`
+              <div class="trade-builder" data-trade-builder>
+                <h4>Create trade offer</h4>
+                <div class="trade-builder-grid">
+                  <div class="trade-choice-panel">
+                    <h5>Card to offer</h5>
+                    <div class="trade-choice-list">${giveChoices}</div>
+                  </div>
+
+                  <div class="trade-arrow">→</div>
+
+                  <div class="trade-choice-panel">
+                    <h5>Select card to receive</h5>
+                    <div class="trade-choice-list">${receiveChoices}</div>
+                  </div>
+                </div>
+
+                <div class="trade-builder-summary" data-trade-summary></div>
+
+                <form method="post" data-trade-form>
+                  <input type="hidden" name="propose_trade" value="1">
+                  <input type="hidden" name="view_player_id" value="${playerId}">
+                  <input type="hidden" name="other_player_id" value="${Number(other.id)}">
+                  <input type="hidden" name="give_card_id">
+                  <input type="hidden" name="give_qty">
+                  <input type="hidden" name="receive_card_id">
+                  <input type="hidden" name="receive_qty">
+                  <div class="trade-builder-actions">
+                    <button type="submit" class="primary">Create Trade Offer</button>
+                  </div>
+                </form>
+              </div>`;
         } else {
-            action='<div class="one-way-explain"><strong>One-way optimized handoff.</strong> The global plan recommends this transfer, but there is no direct reciprocal card in this relationship. Coordinate the handoff rather than creating an artificial trade proposal.</div>';
+            action='<div class="one-way-explain"><strong>One-way optimized handoff.</strong> The global plan recommends this transfer, but there is no card for you to request directly from this player, so a normal in-game trade offer cannot be created from this relationship.</div>';
         }
+
         detail.className='optimizer-detail';
-        detail.innerHTML=`<h3>${esc(playerName)} ↔ ${esc(other.name)} ${r.reciprocal?'<span class="reciprocal-badge">reciprocal</span>':''}</h3><div class="optimizer-detail-grid"><div class="optimizer-side"><strong>You give</strong>${lines(outgoing)}</div><div class="optimizer-side"><strong>You receive</strong>${lines(incoming)}</div></div>${action}`;
+        detail.innerHTML=`<h3>${esc(playerName)} ↔ ${esc(other.name)} ${r.reciprocal?'<span class="reciprocal-badge">reciprocal</span>':''}</h3><div class="optimizer-detail-grid"><div class="optimizer-side"><strong>You can offer</strong>${lines(outgoing)}</div><div class="optimizer-side"><strong>You can request</strong>${lines(incoming)}</div></div>${action}`;
+
+        const builder=detail.querySelector('[data-trade-builder]');
+        if(builder){
+          const form=builder.querySelector('[data-trade-form]');
+          const summary=builder.querySelector('[data-trade-summary]');
+
+          const refreshTradeBuilder=()=>{
+            const giveIndex=Number(builder.querySelector('input[name="optimizer_give"]:checked')?.value ?? -1);
+            const receiveIndex=Number(builder.querySelector('input[name="optimizer_receive"]:checked')?.value ?? -1);
+            const give=outgoing[giveIndex];
+            const receive=incoming[receiveIndex];
+            const button=form.querySelector('button[type="submit"]');
+
+            if(!give||!receive){
+              button.disabled=true;
+              summary.textContent='Choose one card to offer and one card to receive.';
+              return;
+            }
+
+            button.disabled=false;
+            form.querySelector('input[name="give_card_id"]').value=String(give.card_id);
+            form.querySelector('input[name="give_qty"]').value=String(give.qty);
+            form.querySelector('input[name="receive_card_id"]').value=String(receive.card_id);
+            form.querySelector('input[name="receive_qty"]').value=String(receive.qty);
+
+            summary.innerHTML=
+              `<strong>You offer:</strong> ${Number(give.qty)} × ${esc(give.card_name)}
+               &nbsp; → &nbsp;
+               <strong>You request:</strong> ${Number(receive.qty)} × ${esc(receive.card_name)}`;
+          };
+
+          builder.querySelectorAll('input[type="radio"]').forEach(input=>{
+            input.addEventListener('change',refreshTradeBuilder);
+          });
+          refreshTradeBuilder();
+        }
+
         detail.scrollIntoView({behavior:'smooth',block:'nearest'});
     }
     document.querySelectorAll('.optimized-relation[data-relationship-key]').forEach(card=>{const open=()=>showDetail(card.dataset.relationshipKey);card.addEventListener('click',open);card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});});
