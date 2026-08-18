@@ -1,0 +1,40 @@
+name: Deploy develop to Network Solutions
+
+on:
+  push:
+    branches:
+      - develop
+concurrency:
+  group: network-solutions-develop
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v6
+
+      - name: Deploy to Network Solutions
+        uses: SamKirkland/FTP-Deploy-Action@v4.4.0
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftp
+          port: 21
+
+          # CHANGE THIS to the directory your FTP login sees
+          # for clashcards.clockworkmarmalade.com.
+          server-dir: /clashcards/
+
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.github/**
+            config.php
+            sql/**
+            storage/logs/**
+            README.md
+            DEPLOYMENT.md

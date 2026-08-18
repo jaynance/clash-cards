@@ -140,6 +140,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $playerId && isset($_POST['save_det
 
 $cards = $inventoryService->getCards();
 
+// Existing player names are exposed to the client only so username OCR can
+// reconcile small recognition errors (for example "Raptor Due" -> "RaptorDude")
+// without creating an accidental duplicate player.
+$knownPlayerNames = array_values(array_map(
+    static fn(array $row): string => (string)$row['display_name'],
+    $pdo->query('SELECT display_name FROM players ORDER BY display_name')->fetchAll()
+));
+
 $viewPlayer = $viewPlayerId ? $inventoryService->getPlayer($viewPlayerId) : null;
 if (!$viewPlayer && $playerId) {
     $viewPlayerId = $playerId;
@@ -243,7 +251,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.26 Eleven-Box Scanner Recovery -->
+<!-- Production build: V8.27 Username Reconciliation -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -753,6 +761,12 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 <?php endif; ?>
 
 <script>
+window.CLASH_KNOWN_PLAYERS = <?= json_encode(
+    $knownPlayerNames,
+    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+) ?>;
+</script>
+<script>
 (function(){
  const allowed=new Set(['scan','cards','trades']); const serverDefault=<?= json_encode($activeTab) ?>;
  function requested(){const p=new URLSearchParams(location.search),t=p.get('tab');return allowed.has(t)?t:serverDefault;}
@@ -774,7 +788,7 @@ window.CLASH_CARDS = <?= json_encode(
 </script>
 <!-- Tesseract is used ONLY for the small player-name crop, not card detection. -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-<script src="js/card-scanner.js?v=8.26"></script>
+<script src="js/card-scanner.js?v=8.27"></script>
 
 <?php endif; ?>
 </body>

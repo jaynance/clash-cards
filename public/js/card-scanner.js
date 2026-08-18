@@ -1,6 +1,6 @@
-const SCANNER_VERSION = "V8.26";
-const SCANNER_BUILD = "Eleven Box Recovery";
-const SCANNER_BUILD_ID = "v8.26-eleven-box-recovery";
+const SCANNER_VERSION = "V8.27";
+const SCANNER_BUILD = "Username Reconciliation";
+const SCANNER_BUILD_ID = "v8.27-username-reconciliation";
 
 function scannerVersionLine() {
   return `SCANNER | version=${SCANNER_VERSION} | build="${SCANNER_BUILD}" | id=${SCANNER_BUILD_ID}`;
@@ -272,10 +272,11 @@ async function run() {
       try {
         setStatus("Reading player name…", 28);
         const usernameResult = await readUsername(worker, usernameSource);
-        detectedUsername = usernameResult.cleaned;
+        const usernameResolution = reconcileUsernameWithKnownPlayers(usernameResult.cleaned);
+        detectedUsername = usernameResolution.name;
 
         debug.push(
-          `USERNAME | raw=${JSON.stringify(usernameResult.raw)} | detected=${JSON.stringify(usernameResult.cleaned)} | confidence=${usernameResult.confidence.toFixed(1)} | source=${usernameResult.source} | variant=${usernameResult.variant}`
+          `USERNAME | raw=${JSON.stringify(usernameResult.raw)} | ocr=${JSON.stringify(usernameResult.cleaned)} | detected=${JSON.stringify(detectedUsername)} | confidence=${usernameResult.confidence.toFixed(1)} | source=${usernameResult.source} | variant=${usernameResult.variant} | resolution=${usernameResolution.reason}${usernameResolution.distance === null ? "" : ` | distance=${usernameResolution.distance}`}`
         );
 
         const usernameField = document.querySelector('input[name="display_name"]');
@@ -2176,6 +2177,104 @@ function usernamePlausibility(value,confidence){
   if((s.match(/ /g)||[]).length>=2) score-=20;
   if(s.length>22) score-=20;
   return score;
+}
+
+function usernameMatchKey(value){
+  return String(value||"")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g,"");
+}
+
+function editDistance(a,b){
+  a=String(a||"");
+  b=String(b||"");
+
+  if(a===b) return 0;
+  if(!a.length) return b.length;
+  if(!b.length) return a.length;
+
+  let prev=Array.from({length:b.length+1},(_,i)=>i);
+  let curr=new Array(b.length+1);
+
+  for(let i=1;i<=a.length;i++){
+    curr[0]=i;
+    for(let j=1;j<=b.length;j++){
+      const cost=a[i-1]===b[j-1]?0:1;
+      curr[j]=Math.min(
+        curr[j-1]+1,
+        prev[j]+1,
+        prev[j-1]+cost
+      );
+    }
+    [prev,curr]=[curr,prev];
+  }
+
+  return prev[b.length];
+}
+
+function reconcileUsernameWithKnownPlayers(ocrName){
+  const original=normalizeDetectedUsername(ocrName);
+  if(!original){
+    return {name:"",reason:"empty",distance:null};
+  }
+
+  const known=Array.isArray(window.CLASH_KNOWN_PLAYERS)
+    ? window.CLASH_KNOWN_PLAYERS.filter(Boolean)
+    : [];
+
+  if(!known.length){
+    return {name:original,reason:"ocr-only",distance:null};
+  }
+
+  const key=usernameMatchKey(original);
+  if(!key){
+    return {name:original,reason:"ocr-only",distance:null};
+  }
+
+  // Exact match after ignoring spaces/punctuation is always safe.
+  const exact=known.filter(name=>usernameMatchKey(name)===key);
+  if(exact.length===1){
+    return {
+      name:String(exact[0]),
+      reason:"database-exact-normalized",
+      distance:0
+    };
+  }
+
+  const scored=known
+    .map(name=>({
+      name:String(name),
+      distance:editDistance(key,usernameMatchKey(name))
+    }))
+    .sort((a,b)=>a.distance-b.distance || a.name.localeCompare(b.name));
+
+  if(!scored.length){
+    return {name:original,reason:"ocr-only",distance:null};
+  }
+
+  const best=scored[0];
+  const second=scored[1] || null;
+
+  // Conservative threshold:
+  //  - names 4-7 chars: at most one edit
+  //  - names 8+ chars: at most two edits
+  // Also require the best match to beat the runner-up by at least one edit.
+  const allowed=key.length>=8 ? 2 : 1;
+  const uniqueEnough=!second || second.distance>=best.distance+1;
+
+  if(best.distance<=allowed && uniqueEnough){
+    return {
+      name:best.name,
+      reason:"database-fuzzy",
+      distance:best.distance
+    };
+  }
+
+  return {
+    name:original,
+    reason:"ocr-unmatched",
+    distance:best.distance
+  };
 }
 
 
