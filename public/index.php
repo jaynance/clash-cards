@@ -35,6 +35,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['display_name'])) {
 
 $playerId = isset($_SESSION['player_id']) ? (int)$_SESSION['player_id'] : null;
 
+if (
+    $_SERVER['REQUEST_METHOD'] === 'GET'
+    && $playerId
+    && array_key_exists('ajax_player_inventory', $_GET)
+) {
+    header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store');
+
+    $lookupName = trim((string)$_GET['ajax_player_inventory']);
+    if ($lookupName === '') {
+        echo json_encode([
+            'found' => false,
+            'display_name' => null,
+            'quantities' => new stdClass(),
+        ]);
+        exit;
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT id, display_name
+         FROM players
+         WHERE display_name = :display_name
+         LIMIT 1'
+    );
+    $stmt->execute([':display_name' => $lookupName]);
+    $lookupPlayer = $stmt->fetch();
+
+    if (!$lookupPlayer) {
+        echo json_encode([
+            'found' => false,
+            'display_name' => null,
+            'quantities' => new stdClass(),
+        ]);
+        exit;
+    }
+
+    $qtyStmt = $pdo->prepare(
+        'SELECT card_id, owned_qty
+         FROM player_cards
+         WHERE player_id = :player_id'
+    );
+    $qtyStmt->execute([':player_id' => (int)$lookupPlayer['id']]);
+
+    $quantities = [];
+    foreach ($qtyStmt->fetchAll() as $row) {
+        $quantities[(string)(int)$row['card_id']] = (int)$row['owned_qty'];
+    }
+
+    echo json_encode([
+        'found' => true,
+        'display_name' => (string)$lookupPlayer['display_name'],
+        'quantities' => $quantities,
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // The logged-in player controls the session, but the page can display another
 // player's post-scan results without changing that login.
 $viewPlayerId = $playerId;
@@ -251,7 +307,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.27 Username Reconciliation -->
+<!-- Production build: V8.28 Grid Repair + Partial Review -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -279,7 +335,7 @@ button:disabled{opacity:.55;cursor:not-allowed}.primary{font-weight:700}.save-ro
 .scan-completeness{padding:10px 12px;border:1px solid #ccc;border-radius:8px;margin:14px 0 0;background:#fafafa}
 .scan-complete{border-color:#8fb996;background:#f3fbf4}
 .scan-incomplete{border-color:#d4a3a3;background:#fff5f5;font-weight:600}
-#detectedReview{margin-top:22px}.confidence{font-size:.85rem;font-weight:700}.confidence-high{color:#246b2d}.confidence-medium{color:#7a5a00}.confidence-low{color:#9b2c2c}
+#detectedReview{margin-top:22px}.confidence{font-size:.85rem;font-weight:700}.confidence-high{color:#246b2d}.confidence-medium{color:#7a5a00}.confidence-low{color:#9b2c2c}.confidence-previous{color:#315da8}.confidence-manual{color:#9a5b00}.scan-fallback-row{background:#fffaf0}.scan-fallback-row input{border-color:#d7a94b}.partial-note{margin:8px 0;color:#6f5100}
 details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;background:#f4f4f6;border:1px solid #ddd;border-radius:8px;padding:12px;max-height:360px;overflow:auto}
 @media(max-width:700px){.summary-grid{grid-template-columns:1fr}th,td{padding:9px 8px}}
 .app-header{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:14px}.app-header h1{margin:0}.player-chip{background:#f3f6fb;border:1px solid #ccd7e8;border-radius:999px;padding:8px 13px;white-space:nowrap}.tabs{display:flex;gap:6px;border-bottom:1px solid #d9dce3;margin:18px 0 20px;overflow-x:auto}.tab-button{appearance:none;border:0;border-bottom:3px solid transparent;background:transparent;padding:11px 16px;margin:0;color:#555;font:inherit;font-weight:750;cursor:pointer;white-space:nowrap}.tab-button:hover{background:#f6f7f9;color:#222}.tab-button.active{color:#244f91;border-bottom-color:#315da8;background:#f5f8ff}.tab-panel{display:none}.tab-panel.active{display:block}.tab-intro{color:#666;margin-top:-8px;margin-bottom:18px}.admin-tab-link{margin-left:auto;text-decoration:none;color:#555;font-weight:750;padding:11px 16px;white-space:nowrap}.admin-tab-link:hover{background:#f6f7f9;color:#222}@media(max-width:700px){.player-chip{white-space:normal}.tabs{gap:0}.tab-button,.admin-tab-link{padding:10px 12px}}
@@ -408,7 +464,7 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
         </div>
 
         <p id="scanCompleteness" class="scan-completeness">
-            Analyze screenshots to verify all five pages before saving.
+            Analyze screenshots. If a page cannot be read, its cards will use previous saved values or start at 0 for manual review.
         </p>
 
         <div class="save-row">
@@ -788,7 +844,7 @@ window.CLASH_CARDS = <?= json_encode(
 </script>
 <!-- Tesseract is used ONLY for the small player-name crop, not card detection. -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-<script src="js/card-scanner.js?v=8.27"></script>
+<script src="js/card-scanner.js?v=8.28"></script>
 
 <?php endif; ?>
 </body>

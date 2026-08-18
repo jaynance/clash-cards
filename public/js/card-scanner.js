@@ -1,6 +1,6 @@
-const SCANNER_VERSION = "V8.27";
-const SCANNER_BUILD = "Username Reconciliation";
-const SCANNER_BUILD_ID = "v8.27-username-reconciliation";
+const SCANNER_VERSION = "V8.28";
+const SCANNER_BUILD = "Grid Repair + Partial Review";
+const SCANNER_BUILD_ID = "v8.28-grid-repair-partial-review";
 
 function scannerVersionLine() {
   return `SCANNER | version=${SCANNER_VERSION} | build="${SCANNER_BUILD}" | id=${SCANNER_BUILD_ID}`;
@@ -129,7 +129,15 @@ if (review) {
   review.addEventListener("submit", (event) => {
     if (saveDetectedButton?.disabled) {
       event.preventDefault();
-      alert("Inventory cannot be saved until all five card pages are detected.");
+      alert("There is no scanned inventory to save yet.");
+      return;
+    }
+
+    if (saveDetectedButton?.dataset?.partialScan === "1") {
+      const ok=confirm(
+        "This is a partial scan. Cards from unread pages are filled from the player's previous saved inventory, or 0 when no previous value exists. Save after reviewing those rows?"
+      );
+      if(!ok) event.preventDefault();
     }
   });
 }
@@ -137,6 +145,30 @@ if (review) {
 if (teachSelected) {
   teachSelected.addEventListener("click", () => {
     learnFromReviewedRows();
+  });
+}
+
+if(detectedUsernameField){
+  detectedUsernameField.addEventListener("change",async()=>{
+    if(saveDetectedButton?.dataset?.partialScan!=="1") return;
+
+    const previous=await fetchPreviousInventory(detectedUsernameField.value);
+    const quantities=previous.quantities||{};
+
+    for(const inputEl of body.querySelectorAll("tr.scan-fallback-row input[name^='detected[']")){
+      const m=inputEl.name.match(/^detected\[(\d+)\]$/);
+      if(!m) continue;
+
+      const cardId=m[1];
+      const hasPrevious=Object.prototype.hasOwnProperty.call(quantities,cardId);
+      inputEl.value=hasPrevious ? Math.max(0,Number(quantities[cardId])||0) : 0;
+
+      const badge=inputEl.closest("tr")?.querySelector(".confidence");
+      if(badge){
+        badge.className=`confidence confidence-${hasPrevious?"previous":"manual"}`;
+        badge.textContent=hasPrevious?"Previous":"Enter";
+      }
+    }
   });
 }
 updateLearningStatus();
@@ -170,6 +202,7 @@ async function run() {
     if(saveDetectedButton){
       saveDetectedButton.disabled=true;
       saveDetectedButton.dataset.scanComplete="0";
+      saveDetectedButton.dataset.partialScan="0";
     }
     if(scanCompleteness){
       scanCompleteness.textContent="Analyzing screenshots…";
@@ -245,22 +278,29 @@ async function run() {
 
     const detectedPageCount=pages.size;
     const completeScan=detectedPageCount===5;
+    const reviewableScan=detectedPageCount>0;
 
-    debug.push(`SCAN_COMPLETE | pages=${detectedPageCount}/5 | saveAllowed=${completeScan}`);
+    debug.push(
+      `SCAN_COMPLETE | pages=${detectedPageCount}/5 | saveAllowed=${reviewableScan} | mode=${completeScan?"complete":"partial-review"}`
+    );
 
     if(scanCompleteness){
       if(completeScan){
         scanCompleteness.textContent="All 5 pages detected. Inventory can be saved.";
         scanCompleteness.className="scan-completeness scan-complete";
+      }else if(reviewableScan){
+        scanCompleteness.textContent=`${detectedPageCount}/5 pages detected. Missing-page cards will be filled from previous saved values, or 0 if no previous value exists. Review the highlighted rows before saving.`;
+        scanCompleteness.className="scan-completeness scan-incomplete";
       }else{
-        scanCompleteness.textContent=`Only ${detectedPageCount} of 5 pages detected. Teaching is allowed, but inventory saving is disabled.`;
+        scanCompleteness.textContent="No card pages were detected. Nothing can be saved yet.";
         scanCompleteness.className="scan-completeness scan-incomplete";
       }
     }
 
     if(saveDetectedButton){
-      saveDetectedButton.disabled=!completeScan;
+      saveDetectedButton.disabled=!reviewableScan;
       saveDetectedButton.dataset.scanComplete=completeScan?"1":"0";
+      saveDetectedButton.dataset.partialScan=completeScan?"0":"1";
     }
 
     // Username is independent of card-page recognition. Use any screenshot,
@@ -290,6 +330,14 @@ async function run() {
       } catch (e) {
         debug.push(`USERNAME | OCR failed: ${e?.message || String(e)}`);
       }
+    }
+
+    let previousInventory={found:false,display_name:null,quantities:{}};
+    if(detectedUsername){
+      previousInventory=await fetchPreviousInventory(detectedUsername);
+      debug.push(
+        `PREVIOUS_INVENTORY | player=${JSON.stringify(detectedUsername)} | found=${previousInventory.found} | savedRows=${Object.keys(previousInventory.quantities||{}).length}`
+      );
     }
 
     const results = [];
@@ -394,6 +442,10 @@ async function run() {
           30 + Math.round(65*done/Math.max(totalSlots,1))
         );
       }
+    }
+
+    if(!completeScan){
+      addMissingPageRows(results,pages,previousInventory,debug);
     }
 
     render(results);
@@ -509,14 +561,25 @@ function detectGridGeometryPrimary(img){
     };
   }
 
-  const clustered=clusterBoxesIntoRows(boxes,h*.055)
+  let clustered=clusterBoxesIntoRows(boxes,h*.055)
     .filter(row=>row.length>=6)
     .sort((a,b)=>rowMeanY(a)-rowMeanY(b));
+
+  let noisyRowRecovery=null;
+  if(clustered.length<2 && rawBoxCount>=11){
+    noisyRowRecovery=recoverNoisySecondRow(boxes,w,h);
+    if(noisyRowRecovery){
+      boxes=noisyRowRecovery.boxes;
+      clustered=clusterBoxesIntoRows(boxes,h*.055)
+        .filter(row=>row.length>=6)
+        .sort((a,b)=>rowMeanY(a)-rowMeanY(b));
+    }
+  }
 
   if(clustered.length<2){
     return {
       geometry:null,
-      summary:`components=${components.length} | candidateBoxes=${rawBoxCount} | usableRows=${clustered.length} | reason=need-two-rows`
+      summary:`components=${components.length} | candidateBoxes=${rawBoxCount} | usableRows=${clustered.length} | reason=need-two-rows${noisyRowRecovery?"-after-repair":""}`
     };
   }
 
@@ -571,8 +634,116 @@ function detectGridGeometryPrimary(img){
       boxes:finalBoxes,
       gridMethod:"primary"
     },
-    summary:`components=${components.length} | candidateBoxes=${rawBoxCount} | rowCounts=${rowCounts.join("+")} | boxes=12${elevenBoxRecovery ? ` | recoveredMissingColumn=${elevenBoxRecovery.missingColumn+1}` : ""}`
+    summary:`components=${components.length} | candidateBoxes=${rawBoxCount} | rowCounts=${rowCounts.join("+")} | boxes=12${elevenBoxRecovery ? ` | recoveredMissingColumn=${elevenBoxRecovery.missingColumn+1}` : ""}${noisyRowRecovery ? ` | noisyRowRepair=column${noisyRowRecovery.missingColumn+1}` : ""}`
   };
+}
+
+function recoverNoisySecondRow(boxes,w,h){
+  // Try progressively more tolerant Y clustering. We are looking for one
+  // trustworthy six-card row and another band containing at least five boxes
+  // that line up with five of the six reference columns.
+  for(const tolerance of [h*.065,h*.080,h*.100]){
+    const rows=clusterBoxesIntoRows(boxes,tolerance)
+      .filter(row=>row.length>=4)
+      .sort((a,b)=>rowMeanY(a)-rowMeanY(b));
+
+    for(let fullIndex=0;fullIndex<rows.length;fullIndex++){
+      const fullSelected=chooseRegularSixBoxes(rows[fullIndex],w);
+      if(!fullSelected) continue;
+
+      const full=[...fullSelected].sort((a,b)=>a.x-b.x);
+      const centers=full.map(b=>b.x+b.w/2);
+      const gaps=[];
+      for(let i=1;i<centers.length;i++) gaps.push(centers[i]-centers[i-1]);
+      const step=median(gaps);
+      if(step<w*.075 || step>w*.20) continue;
+      if(Math.max(...gaps)-Math.min(...gaps)>step*.25) continue;
+
+      for(let shortIndex=0;shortIndex<rows.length;shortIndex++){
+        if(shortIndex===fullIndex) continue;
+
+        const shortRow=rows[shortIndex];
+        if(shortRow.length<5 || shortRow.length>7) continue;
+
+        // The two actual card rows must be meaningfully separated vertically.
+        const yGap=Math.abs(rowMeanY(shortRow)-rowMeanY(full));
+        if(yGap<h*.10 || yGap>h*.38) continue;
+
+        // Keep the closest candidate for each expected column. A stray box can
+        // therefore be ignored while five real boxes still identify the row.
+        const matched=new Map();
+
+        for(const b of shortRow){
+          const cx=b.x+b.w/2;
+          let bestCol=-1,bestDist=Infinity;
+          for(let col=0;col<centers.length;col++){
+            const d=Math.abs(cx-centers[col]);
+            if(d<bestDist){bestDist=d;bestCol=col;}
+          }
+
+          if(bestCol<0 || bestDist>step*.32) continue;
+
+          const prior=matched.get(bestCol);
+          if(!prior || bestDist<prior.dist){
+            matched.set(bestCol,{box:b,dist:bestDist});
+          }
+        }
+
+        if(matched.size!==5) continue;
+
+        let missingColumn=-1;
+        for(let col=0;col<6;col++){
+          if(!matched.has(col)){missingColumn=col;break;}
+        }
+        if(missingColumn<0) continue;
+
+        const good=[...matched.values()].map(v=>v.box);
+        const widths=good.map(b=>b.w).sort((a,b)=>a-b);
+        const heights=good.map(b=>b.h).sort((a,b)=>a-b);
+        const ys=good.map(b=>b.y).sort((a,b)=>a-b);
+        const boxW=median(widths);
+        const boxH=median(heights);
+        const rowY=median(ys);
+
+        const reconstructed={
+          x:centers[missingColumn]-boxW/2,
+          y:rowY,
+          w:boxW,
+          h:boxH,
+          area:Math.round(boxW*boxH*.35),
+          recovered:true
+        };
+
+        if(
+          reconstructed.x<0 ||
+          reconstructed.x+reconstructed.w>w ||
+          reconstructed.y<0 ||
+          reconstructed.y+reconstructed.h>h
+        ) continue;
+
+        // Drop boxes in this damaged band that were not selected as the five
+        // good cards, then append the reconstructed sixth card.
+        const goodSet=new Set(good);
+        const repaired=boxes.filter(b=>{
+          if(goodSet.has(b)) return true;
+          if(full.includes(b)) return true;
+
+          const by=b.y+b.h/2;
+          const shortY=rowMeanY(shortRow);
+          return Math.abs(by-shortY)>tolerance;
+        });
+
+        repaired.push(reconstructed);
+
+        return {
+          boxes:repaired,
+          missingColumn
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 function recoverMissingBoxFromEleven(boxes,w,h){
@@ -2185,6 +2356,12 @@ function usernameMatchKey(value){
     .replace(/[^a-z0-9]/g,"");
 }
 
+function usernameConfusionKey(value){
+  return usernameMatchKey(value)
+    .replace(/[o0]/g,"0")
+    .replace(/[il1]/g,"1");
+}
+
 function editDistance(a,b){
   a=String(a||"");
   b=String(b||"");
@@ -2241,10 +2418,25 @@ function reconcileUsernameWithKnownPlayers(ocrName){
     };
   }
 
+  const confusionKey=usernameConfusionKey(original);
+  const confusionExact=known.filter(
+    name=>usernameConfusionKey(name)===confusionKey
+  );
+  if(confusionExact.length===1){
+    return {
+      name:String(confusionExact[0]),
+      reason:"database-ocr-confusion",
+      distance:0
+    };
+  }
+
   const scored=known
     .map(name=>({
       name:String(name),
-      distance:editDistance(key,usernameMatchKey(name))
+      distance:Math.min(
+        editDistance(key,usernameMatchKey(name)),
+        editDistance(confusionKey,usernameConfusionKey(name))
+      )
     }))
     .sort((a,b)=>a.distance-b.distance || a.name.localeCompare(b.name));
 
@@ -2427,6 +2619,77 @@ function cssEscape(value){
   return String(value).replace(/["\\]/g,"\\$&");
 }
 
+
+async function fetchPreviousInventory(playerName){
+  const name=String(playerName||"").trim();
+  if(!name) return {found:false,display_name:null,quantities:{}};
+
+  try{
+    const url=new URL(window.location.href);
+    url.search="";
+    url.hash="";
+    url.searchParams.set("ajax_player_inventory",name);
+
+    const response=await fetch(url.toString(),{
+      method:"GET",
+      credentials:"same-origin",
+      headers:{"Accept":"application/json"},
+      cache:"no-store"
+    });
+
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data=await response.json();
+
+    return {
+      found:!!data.found,
+      display_name:data.display_name||null,
+      quantities:data.quantities&&typeof data.quantities==="object"
+        ? data.quantities
+        : {}
+    };
+  }catch(e){
+    console.warn("Could not load previous player inventory",e);
+    return {found:false,display_name:null,quantities:{}};
+  }
+}
+
+function addMissingPageRows(results,pages,previousInventory,debug){
+  const quantities=previousInventory?.quantities||{};
+
+  for(let page=0;page<5;page++){
+    if(pages.has(page)) continue;
+
+    for(let slot=0;slot<12;slot++){
+      const orderIndex=page*12+slot;
+      if(orderIndex>=EVENT_ORDER.length) continue;
+
+      const [category,name]=EVENT_ORDER[orderIndex];
+      const dbCard=byKey.get(`${category}|${name}`);
+      if(!dbCard) continue;
+
+      const key=String(dbCard.id);
+      const hasPrevious=Object.prototype.hasOwnProperty.call(quantities,key);
+      const qty=hasPrevious ? Math.max(0,Number(quantities[key])||0) : 0;
+
+      results.push({
+        card_id:Number(dbCard.id),
+        name,
+        category,
+        owned_qty:qty,
+        confidence:hasPrevious?"previous":"manual",
+        learning_id:`missing-${page}-${slot}-${dbCard.id}`,
+        learnable:false,
+        fallback:true,
+        fallback_source:hasPrevious?"previous":"zero"
+      });
+
+      debug.push(
+        `FILL | page=${page+1} | slot=${slot+1} | ${category} | ${name} | qty=${qty} | source=${hasPrevious?"previous":"zero"}`
+      );
+    }
+  }
+}
+
 /* ---------------- UI / utilities ---------------- */
 
 function render(rows){
@@ -2438,6 +2701,7 @@ function render(rows){
 
   for(const r of rows){
     const tr=document.createElement("tr");
+    if(r.fallback) tr.classList.add("scan-fallback-row");
 
     const learnCell=r.learnable
       ? `<label class="learn-example">
@@ -2452,7 +2716,11 @@ function render(rows){
           value="${r.owned_qty}"
           data-learning-qty-id="${esc(r.learning_id)}"
           required></td>
-      <td><span class="confidence confidence-${r.confidence}">${cap(r.confidence)}</span></td>
+      <td><span class="confidence confidence-${r.confidence}">${
+        r.confidence==="previous" ? "Previous" :
+        r.confidence==="manual" ? "Enter" :
+        cap(r.confidence)
+      }</span></td>
       <td>${learnCell}</td>`;
 
     body.appendChild(tr);
