@@ -1,6 +1,6 @@
-const SCANNER_VERSION = "V8.28";
-const SCANNER_BUILD = "Grid Repair + Partial Review";
-const SCANNER_BUILD_ID = "v8.28-grid-repair-partial-review";
+const SCANNER_VERSION = "V8.29";
+const SCANNER_BUILD = "7+6 Repair + Username Guard";
+const SCANNER_BUILD_ID = "v8.29-7plus6-username-guard";
 
 function scannerVersionLine() {
   return `SCANNER | version=${SCANNER_VERSION} | build="${SCANNER_BUILD}" | id=${SCANNER_BUILD_ID}`;
@@ -73,6 +73,8 @@ const saveTargetName = document.getElementById("saveTargetName");
 const teachSelected = document.getElementById("teachSelectedExamples");
 const scanCompleteness = document.getElementById("scanCompleteness");
 const saveDetectedButton = document.getElementById("saveDetectedButton");
+const usernameReviewWarning = document.getElementById("usernameReviewWarning");
+let usernameNeedsManualReview = false;
 
 const LEARNING_STORAGE_KEY = "clashCardsLearnedGlyphs.v1";
 const MAX_LEARNED_PER_QTY = 40;
@@ -119,7 +121,17 @@ if (clearLearning) {
     localStorage.removeItem(LEARNING_STORAGE_KEY);
     updateLearningStatus();
 if(detectedUsernameField){
-  detectedUsernameField.addEventListener("input",syncSaveTargetName);
+  detectedUsernameField.addEventListener("input",()=>{
+    syncSaveTargetName();
+    if(usernameNeedsManualReview && detectedUsernameField.value.trim().length>=3){
+      usernameNeedsManualReview=false;
+      detectedUsernameField.classList.remove("username-review-required");
+      if(usernameReviewWarning) usernameReviewWarning.hidden=true;
+      if(saveDetectedButton?.dataset?.hasReviewableScan==="1"){
+        saveDetectedButton.disabled=false;
+      }
+    }
+  });
 }
 syncSaveTargetName();
 
@@ -127,6 +139,13 @@ syncSaveTargetName();
 }
 if (review) {
   review.addEventListener("submit", (event) => {
+    if(usernameNeedsManualReview){
+      event.preventDefault();
+      alert("Please verify or correct the scanned player name before saving.");
+      detectedUsernameField?.focus();
+      return;
+    }
+
     if (saveDetectedButton?.disabled) {
       event.preventDefault();
       alert("There is no scanned inventory to save yet.");
@@ -203,6 +222,7 @@ async function run() {
       saveDetectedButton.disabled=true;
       saveDetectedButton.dataset.scanComplete="0";
       saveDetectedButton.dataset.partialScan="0";
+      saveDetectedButton.dataset.hasReviewableScan="0";
     }
     if(scanCompleteness){
       scanCompleteness.textContent="Analyzing screenshots…";
@@ -298,7 +318,8 @@ async function run() {
     }
 
     if(saveDetectedButton){
-      saveDetectedButton.disabled=!reviewableScan;
+      saveDetectedButton.dataset.hasReviewableScan=reviewableScan?"1":"0";
+      saveDetectedButton.disabled=!reviewableScan || usernameNeedsManualReview;
       saveDetectedButton.dataset.scanComplete=completeScan?"1":"0";
       saveDetectedButton.dataset.partialScan=completeScan?"0":"1";
     }
@@ -315,8 +336,23 @@ async function run() {
         const usernameResolution = reconcileUsernameWithKnownPlayers(usernameResult.cleaned);
         detectedUsername = usernameResolution.name;
 
+        const matchedKnownPlayer=[
+          "database-exact-normalized",
+          "database-ocr-confusion",
+          "database-fuzzy"
+        ].includes(usernameResolution.reason);
+
+        const suspiciousNewName=
+          !matchedKnownPlayer &&
+          (
+            usernameResult.confidence<50 ||
+            usernameMatchKey(detectedUsername).length<4
+          );
+
+        usernameNeedsManualReview=suspiciousNewName;
+
         debug.push(
-          `USERNAME | raw=${JSON.stringify(usernameResult.raw)} | ocr=${JSON.stringify(usernameResult.cleaned)} | detected=${JSON.stringify(detectedUsername)} | confidence=${usernameResult.confidence.toFixed(1)} | source=${usernameResult.source} | variant=${usernameResult.variant} | resolution=${usernameResolution.reason}${usernameResolution.distance === null ? "" : ` | distance=${usernameResolution.distance}`}`
+          `USERNAME | raw=${JSON.stringify(usernameResult.raw)} | ocr=${JSON.stringify(usernameResult.cleaned)} | detected=${JSON.stringify(detectedUsername)} | confidence=${usernameResult.confidence.toFixed(1)} | source=${usernameResult.source} | variant=${usernameResult.variant} | resolution=${usernameResolution.reason}${usernameResolution.distance === null ? "" : ` | distance=${usernameResolution.distance}`} | guard=${suspiciousNewName?"manual-review":"accepted"}`
         );
 
         const usernameField = document.querySelector('input[name="display_name"]');
@@ -326,6 +362,9 @@ async function run() {
         if (detectedNameField && detectedUsername) {
           detectedNameField.value = normalizeDetectedUsername(detectedUsername);
           syncSaveTargetName();
+          detectedNameField.classList.toggle("username-review-required",usernameNeedsManualReview);
+          if(usernameReviewWarning) usernameReviewWarning.hidden=!usernameNeedsManualReview;
+          if(usernameNeedsManualReview && saveDetectedButton) saveDetectedButton.disabled=true;
         }
       } catch (e) {
         debug.push(`USERNAME | OCR failed: ${e?.message || String(e)}`);
@@ -587,8 +626,30 @@ function detectGridGeometryPrimary(img){
   const rowCounts=rows.map(r=>r.length);
   const finalBoxes=[];
 
-  for(let r=0;r<rows.length;r++){
-    const selected=chooseRegularSixBoxes(rows[r],w);
+  let sevenSixRecovery=null;
+  let repairedRows=rows;
+
+  if(
+    (rowCounts[0]===6 && rowCounts[1]===7) ||
+    (rowCounts[0]===7 && rowCounts[1]===6)
+  ){
+    const referenceIndex=rowCounts[0]===6 ? 0 : 1;
+    const noisyIndex=referenceIndex===0 ? 1 : 0;
+    const reference=chooseRegularSixBoxes(rows[referenceIndex],w);
+    const repairedNoisy=reference
+      ? chooseSixByReferenceColumns(rows[noisyIndex],reference,w)
+      : null;
+
+    if(reference && repairedNoisy){
+      repairedRows=[...rows];
+      repairedRows[referenceIndex]=reference;
+      repairedRows[noisyIndex]=repairedNoisy;
+      sevenSixRecovery={noisyRow:noisyIndex+1};
+    }
+  }
+
+  for(let r=0;r<repairedRows.length;r++){
+    const selected=chooseRegularSixBoxes(repairedRows[r],w);
 
     if(!selected){
       return {
@@ -634,8 +695,51 @@ function detectGridGeometryPrimary(img){
       boxes:finalBoxes,
       gridMethod:"primary"
     },
-    summary:`components=${components.length} | candidateBoxes=${rawBoxCount} | rowCounts=${rowCounts.join("+")} | boxes=12${elevenBoxRecovery ? ` | recoveredMissingColumn=${elevenBoxRecovery.missingColumn+1}` : ""}${noisyRowRecovery ? ` | noisyRowRepair=column${noisyRowRecovery.missingColumn+1}` : ""}`
+    summary:`components=${components.length} | candidateBoxes=${rawBoxCount} | rowCounts=${rowCounts.join("+")} | boxes=12${elevenBoxRecovery ? ` | recoveredMissingColumn=${elevenBoxRecovery.missingColumn+1}` : ""}${noisyRowRecovery ? ` | noisyRowRepair=column${noisyRowRecovery.missingColumn+1}` : ""}${sevenSixRecovery ? ` | sevenSixRepair=row${sevenSixRecovery.noisyRow}` : ""}`
   };
+}
+
+function chooseSixByReferenceColumns(noisyRow,referenceRow,w){
+  if(!Array.isArray(noisyRow)||noisyRow.length<6) return null;
+  if(!Array.isArray(referenceRow)||referenceRow.length!==6) return null;
+
+  const reference=[...referenceRow].sort((a,b)=>a.x-b.x);
+  const centers=reference.map(b=>b.x+b.w/2);
+  const gaps=[];
+  for(let i=1;i<6;i++) gaps.push(centers[i]-centers[i-1]);
+  const step=median(gaps);
+
+  if(step<w*.075||step>w*.20) return null;
+  if(Math.max(...gaps)-Math.min(...gaps)>step*.25) return null;
+
+  const selected=[];
+  const used=new Set();
+
+  for(let col=0;col<6;col++){
+    let bestIndex=-1,bestDistance=Infinity;
+    for(let i=0;i<noisyRow.length;i++){
+      if(used.has(i)) continue;
+      const cx=noisyRow[i].x+noisyRow[i].w/2;
+      const distance=Math.abs(cx-centers[col]);
+      if(distance<bestDistance){
+        bestDistance=distance;
+        bestIndex=i;
+      }
+    }
+    if(bestIndex<0||bestDistance>step*.30) return null;
+    used.add(bestIndex);
+    selected.push(noisyRow[bestIndex]);
+  }
+
+  selected.sort((a,b)=>a.x-b.x);
+  const selectedCenters=selected.map(b=>b.x+b.w/2);
+  const selectedGaps=[];
+  for(let i=1;i<6;i++) selectedGaps.push(selectedCenters[i]-selectedCenters[i-1]);
+  const selectedStep=median(selectedGaps);
+  if(selectedStep<w*.075||selectedStep>w*.20) return null;
+  if(Math.max(...selectedGaps)-Math.min(...selectedGaps)>selectedStep*.25) return null;
+
+  return selected;
 }
 
 function recoverNoisySecondRow(boxes,w,h){

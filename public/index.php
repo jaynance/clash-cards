@@ -307,7 +307,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.28 Grid Repair + Partial Review -->
+<!-- Production build: V8.29 7+6 Repair + Username Guard -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -342,6 +342,8 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 
 .player-opt-summary{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:10px;margin:14px 0 18px}.player-opt-metric{background:#f6f8fb;border:1px solid #dde3ec;border-radius:10px;padding:11px;text-align:center}.player-opt-metric strong{display:block;font-size:1.25rem}.player-opt-metric span{font-size:.8rem;color:#666}.player-opt-note{padding:11px 13px;background:#f5f8ff;border:1px solid #c8d6ed;border-radius:9px;margin:12px 0}.player-opt-warning{padding:11px 13px;background:#fff8e5;border:1px solid #dfc981;border-radius:9px;margin:12px 0}.player-network-wrap{background:#fff;border:1px solid #ddd;border-radius:12px;padding:10px;overflow:auto;margin:14px 0}.player-network-wrap svg{width:100%;min-width:680px;height:440px}.pgraph-edge{stroke:#9aa7bd;stroke-width:3;cursor:pointer}.pgraph-node{fill:#f5f8ff;stroke:#315da8;stroke-width:2;cursor:pointer}.pgraph-node-center{fill:#eaf2ff;stroke-width:4}.pgraph-node-label{font-size:12px;font-weight:700;text-anchor:middle;dominant-baseline:middle;pointer-events:none}.pgraph-label-bg{fill:white;stroke:#d7dce5;stroke-width:1;opacity:.97}.pgraph-edge-label{font-size:11px;fill:#444;text-anchor:middle;cursor:pointer}.optimized-relations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0}.optimized-relation{border:1px solid #ddd;border-radius:11px;padding:14px;background:white;cursor:pointer}.optimized-relation:hover,.optimized-relation.selected{border-color:#315da8;box-shadow:0 0 0 2px rgba(49,93,168,.10)}.optimized-relation h3{margin:0 0 8px}.reciprocal-badge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;background:#e8f1ff;color:#244f91;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em}.optimized-transfer{padding:6px 0;border-top:1px solid #eee}.optimized-transfer:first-of-type{border-top:0}.optimizer-detail{border:1px solid #b9c9e2;border-radius:12px;padding:15px;background:white;margin:16px 0}.optimizer-detail.empty{border-style:dashed;color:#666}.optimizer-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.optimizer-side{background:#f8f9fb;border-radius:9px;padding:10px}.optimized-proposal{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid #eee}.optimized-proposal-text{flex:1;min-width:280px}.one-way-explain{background:#fff8e5;border:1px solid #dfc981;border-radius:8px;padding:10px;margin-top:12px}@media(max-width:850px){.player-opt-summary{grid-template-columns:repeat(2,1fr)}.optimized-relations{grid-template-columns:1fr}.optimizer-detail-grid{grid-template-columns:1fr}}
 
+.username-review-warning{margin:0 0 10px;padding:9px 11px;border:1px solid #d59b29;border-radius:8px;background:#fff8e5;color:#664d00}
+.username-review-required{border:2px solid #d59b29!important;background:#fffdf5}
 </style>
 </head>
 <body data-logged-in-player="<?= h($_SESSION['display_name'] ?? '') ?>">
@@ -406,6 +408,10 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
         style="margin:6px 0 6px;padding:8px;min-width:260px"
         required
     >
+    <p id="usernameReviewWarning" class="username-review-warning" hidden>
+        <strong>Please verify the player name.</strong>
+        OCR confidence was too low to safely create a new player. Correct the name above before saving.
+    </p>
     <p class="privacy-note" style="margin-top:0">
         This is the player whose inventory will be updated. Correct it if OCR gets the name wrong.
     </p>
@@ -844,7 +850,7 @@ window.CLASH_CARDS = <?= json_encode(
 </script>
 <!-- Tesseract is used ONLY for the small player-name crop, not card detection. -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-<script src="js/card-scanner.js?v=8.28"></script>
+<script src="js/card-scanner.js?v=8.29"></script>
 
 <?php endif; ?>
 </body>
