@@ -243,7 +243,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.25 Friends-and-Family Beta -->
+<!-- Production build: V8.26 Eleven-Box Scanner Recovery -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -774,7 +774,7 @@ window.CLASH_CARDS = <?= json_encode(
 </script>
 <!-- Tesseract is used ONLY for the small player-name crop, not card detection. -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-<script src="js/card-scanner.js?v=8.15"></script>
+<script src="js/card-scanner.js?v=8.26"></script>
 
 <?php endif; ?>
 </body>

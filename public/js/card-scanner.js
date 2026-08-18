@@ -1,6 +1,6 @@
-const SCANNER_VERSION = "V8.15";
-const SCANNER_BUILD = "Robust Grid Recovery";
-const SCANNER_BUILD_ID = "v8.15-robust-grid-recovery";
+const SCANNER_VERSION = "V8.26";
+const SCANNER_BUILD = "Eleven Box Recovery";
+const SCANNER_BUILD_ID = "v8.26-eleven-box-recovery";
 
 function scannerVersionLine() {
   return `SCANNER | version=${SCANNER_VERSION} | build="${SCANNER_BUILD}" | id=${SCANNER_BUILD_ID}`;
@@ -491,6 +491,16 @@ function detectGridGeometryPrimary(img){
 
   const rawBoxCount=boxes.length;
 
+  // V8.26: if exactly one card frame is lost, reconstruct it from the
+  // opposite row's six-column geometry instead of rejecting the page.
+  let elevenBoxRecovery = null;
+  if(boxes.length===11){
+    elevenBoxRecovery=recoverMissingBoxFromEleven(boxes,w,h);
+    if(elevenBoxRecovery){
+      boxes=elevenBoxRecovery.boxes;
+    }
+  }
+
   if(boxes.length<12){
     return {
       geometry:null,
@@ -560,7 +570,94 @@ function detectGridGeometryPrimary(img){
       boxes:finalBoxes,
       gridMethod:"primary"
     },
-    summary:`components=${components.length} | candidateBoxes=${rawBoxCount} | rowCounts=${rowCounts.join("+")} | boxes=12`
+    summary:`components=${components.length} | candidateBoxes=${rawBoxCount} | rowCounts=${rowCounts.join("+")} | boxes=12${elevenBoxRecovery ? ` | recoveredMissingColumn=${elevenBoxRecovery.missingColumn+1}` : ""}`
+  };
+}
+
+function recoverMissingBoxFromEleven(boxes,w,h){
+  const rows=clusterBoxesIntoRows(boxes,h*.060)
+    .filter(row=>row.length>=5)
+    .sort((a,b)=>rowMeanY(a)-rowMeanY(b));
+
+  if(rows.length<2) return null;
+
+  let pair=null;
+  for(let i=0;i<rows.length;i++){
+    for(let j=i+1;j<rows.length;j++){
+      const counts=[rows[i].length,rows[j].length].sort((a,b)=>a-b);
+      if(counts[0]===5 && counts[1]===6){
+        pair=[rows[i],rows[j]];
+        break;
+      }
+    }
+    if(pair) break;
+  }
+  if(!pair) return null;
+
+  let fullRow=pair[0].length===6 ? pair[0] : pair[1];
+  let shortRow=pair[0].length===5 ? pair[0] : pair[1];
+
+  fullRow=[...fullRow].sort((a,b)=>a.x-b.x);
+  shortRow=[...shortRow].sort((a,b)=>a.x-b.x);
+
+  const fullCenters=fullRow.map(b=>b.x+b.w/2);
+  const gaps=[];
+  for(let i=1;i<fullCenters.length;i++) gaps.push(fullCenters[i]-fullCenters[i-1]);
+  const step=median(gaps);
+
+  if(step<w*.075 || step>w*.20) return null;
+
+  const spread=Math.max(...gaps)-Math.min(...gaps);
+  if(spread>step*.25) return null;
+
+  const matched=new Set();
+  for(const b of shortRow){
+    const cx=b.x+b.w/2;
+    let best=-1,bestDist=Infinity;
+    for(let i=0;i<fullCenters.length;i++){
+      const d=Math.abs(cx-fullCenters[i]);
+      if(d<bestDist){ bestDist=d; best=i; }
+    }
+    if(best<0 || bestDist>step*.30 || matched.has(best)) return null;
+    matched.add(best);
+  }
+
+  if(matched.size!==5) return null;
+
+  let missingColumn=-1;
+  for(let i=0;i<6;i++){
+    if(!matched.has(i)){ missingColumn=i; break; }
+  }
+  if(missingColumn<0) return null;
+
+  const widths=shortRow.map(b=>b.w).sort((a,b)=>a-b);
+  const heights=shortRow.map(b=>b.h).sort((a,b)=>a-b);
+  const ys=shortRow.map(b=>b.y).sort((a,b)=>a-b);
+
+  const boxW=median(widths);
+  const boxH=median(heights);
+  const rowY=median(ys);
+  const cx=fullCenters[missingColumn];
+
+  const reconstructed={
+    x:cx-boxW/2,
+    y:rowY,
+    w:boxW,
+    h:boxH,
+    area:Math.round(boxW*boxH*.35),
+    recovered:true
+  };
+
+  if(
+    reconstructed.x<0 ||
+    reconstructed.x+reconstructed.w>w ||
+    reconstructed.y<0 ||
+    reconstructed.y+reconstructed.h>h
+  ) return null;
+
+  return {
+    boxes:[...boxes,reconstructed],
+    missingColumn
   };
 }
 
