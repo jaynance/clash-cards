@@ -13,13 +13,13 @@ $config = require $configPath;
 
 require dirname(__DIR__) . '/src/Database.php';
 require dirname(__DIR__) . '/src/InventoryService.php';
-require dirname(__DIR__) . '/src/MatchmakingService.php';
 require dirname(__DIR__) . '/src/TradeService.php';
+require dirname(__DIR__) . '/src/GlobalTradeOptimizer.php';
 
 $pdo = Database::connect($config['db']);
 $inventoryService = new InventoryService($pdo);
-$matchmakingService = new MatchmakingService($pdo);
 $tradeService = new TradeService($pdo);
+$globalTradeOptimizer = new GlobalTradeOptimizer($pdo);
 
 $message = null;
 
@@ -44,7 +44,7 @@ if ($playerId && isset($_GET['view_player_id'])) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $playerId && isset($_POST['propose_trade'])) {
-    $tradeViewPlayerId = max(0, (int)($_POST['view_player_id'] ?? 0));
+    $tradeViewPlayerId = $playerId;
 
     try {
         $proposalId = $tradeService->createProposal(
@@ -57,7 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $playerId && isset($_POST['propose_
         );
 
         header(
-            'Location: index.php?view_player_id=' . $tradeViewPlayerId .
+            'Location: index.php?view_player_id=' . $playerId .
             '&trade=proposed&trade_id=' . $proposalId . '&tab=trades'
         );
         exit;
@@ -67,13 +67,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $playerId && isset($_POST['propose_
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $playerId && isset($_POST['complete_trade'])) {
-    $tradeViewPlayerId = max(0, (int)($_POST['view_player_id'] ?? 0));
+    $tradeViewPlayerId = $playerId;
     $tradeId = max(0, (int)($_POST['trade_id'] ?? 0));
 
     try {
         $tradeService->completeProposal($tradeId, $tradeViewPlayerId);
         header(
-            'Location: index.php?view_player_id=' . $tradeViewPlayerId .
+            'Location: index.php?view_player_id=' . $playerId .
             '&trade=completed&trade_id=' . $tradeId . '&tab=trades'
         );
         exit;
@@ -83,13 +83,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $playerId && isset($_POST['complete
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $playerId && isset($_POST['cancel_trade'])) {
-    $tradeViewPlayerId = max(0, (int)($_POST['view_player_id'] ?? 0));
+    $tradeViewPlayerId = $playerId;
     $tradeId = max(0, (int)($_POST['trade_id'] ?? 0));
 
     try {
         $tradeService->cancelProposal($tradeId, $tradeViewPlayerId);
         header(
-            'Location: index.php?view_player_id=' . $tradeViewPlayerId .
+            'Location: index.php?view_player_id=' . $playerId .
             '&trade=cancelled&trade_id=' . $tradeId . '&tab=trades'
         );
         exit;
@@ -163,8 +163,33 @@ if (isset($_GET['trade'])) {
 }
 
 $inventory = $viewPlayerId ? $inventoryService->getInventory($viewPlayerId) : [];
-$matches = $viewPlayerId ? $matchmakingService->findReciprocalTrades($viewPlayerId) : [];
-$trades = $viewPlayerId ? $tradeService->listForPlayer($viewPlayerId) : [];
+
+// Trades always use the logged-in player's perspective, even when My Cards is
+// temporarily showing a scanned player's inventory.
+$tradePlayer = $playerId ? $inventoryService->getPlayer($playerId) : null;
+$trades = $playerId ? $tradeService->listForPlayer($playerId) : [];
+
+$optimization = $playerId ? $globalTradeOptimizer->optimize() : null;
+$optimizedRelationships = [];
+$optimizerEligible = false;
+
+if ($optimization && $playerId) {
+    foreach ($optimization['eligible_players'] as $eligiblePlayer) {
+        if ((int)$eligiblePlayer['id'] === $playerId) {
+            $optimizerEligible = true;
+            break;
+        }
+    }
+
+    foreach ($optimization['relationships'] as $relationship) {
+        if (
+            (int)$relationship['player_a_id'] === $playerId
+            || (int)$relationship['player_b_id'] === $playerId
+        ) {
+            $optimizedRelationships[] = $relationship;
+        }
+    }
+}
 
 $openTrades = [];
 $tradeHistory = [];
@@ -194,29 +219,6 @@ foreach ($inventory as $row) {
     }
 }
 
-// Group reciprocal combinations by player so the user sees one useful card per
-// person instead of a long flat list of repeated names.
-$tradeGroups = [];
-foreach ($matches as $match) {
-    $otherId = (int)$match['other_player_id'];
-
-    if (!isset($tradeGroups[$otherId])) {
-        $tradeGroups[$otherId] = [
-            'other_player_id' => $otherId,
-            'other_player_name' => (string)$match['other_player_name'],
-            'options' => [],
-        ];
-    }
-
-    $tradeGroups[$otherId]['options'][] = $match;
-}
-
-uasort(
-    $tradeGroups,
-    fn(array $a, array $b) => count($b['options']) <=> count($a['options'])
-        ?: strcasecmp($a['other_player_name'], $b['other_player_name'])
-);
-
 $allowedTabs = ['scan', 'cards', 'trades'];
 $activeTab = isset($_GET['tab']) ? (string)$_GET['tab'] : '';
 if (!in_array($activeTab, $allowedTabs, true)) {
@@ -235,7 +237,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Workflow build: V8.20 Tabbed Player UI -->
+<!-- Workflow build: V8.24 Player Optimized Trades -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -267,6 +269,9 @@ button:disabled{opacity:.55;cursor:not-allowed}.primary{font-weight:700}.save-ro
 details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;background:#f4f4f6;border:1px solid #ddd;border-radius:8px;padding:12px;max-height:360px;overflow:auto}
 @media(max-width:700px){.summary-grid{grid-template-columns:1fr}th,td{padding:9px 8px}}
 .app-header{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:14px}.app-header h1{margin:0}.player-chip{background:#f3f6fb;border:1px solid #ccd7e8;border-radius:999px;padding:8px 13px;white-space:nowrap}.tabs{display:flex;gap:6px;border-bottom:1px solid #d9dce3;margin:18px 0 20px;overflow-x:auto}.tab-button{appearance:none;border:0;border-bottom:3px solid transparent;background:transparent;padding:11px 16px;margin:0;color:#555;font:inherit;font-weight:750;cursor:pointer;white-space:nowrap}.tab-button:hover{background:#f6f7f9;color:#222}.tab-button.active{color:#244f91;border-bottom-color:#315da8;background:#f5f8ff}.tab-panel{display:none}.tab-panel.active{display:block}.tab-intro{color:#666;margin-top:-8px;margin-bottom:18px}.admin-tab-link{margin-left:auto;text-decoration:none;color:#555;font-weight:750;padding:11px 16px;white-space:nowrap}.admin-tab-link:hover{background:#f6f7f9;color:#222}@media(max-width:700px){.player-chip{white-space:normal}.tabs{gap:0}.tab-button,.admin-tab-link{padding:10px 12px}}
+
+.player-opt-summary{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:10px;margin:14px 0 18px}.player-opt-metric{background:#f6f8fb;border:1px solid #dde3ec;border-radius:10px;padding:11px;text-align:center}.player-opt-metric strong{display:block;font-size:1.25rem}.player-opt-metric span{font-size:.8rem;color:#666}.player-opt-note{padding:11px 13px;background:#f5f8ff;border:1px solid #c8d6ed;border-radius:9px;margin:12px 0}.player-opt-warning{padding:11px 13px;background:#fff8e5;border:1px solid #dfc981;border-radius:9px;margin:12px 0}.player-network-wrap{background:#fff;border:1px solid #ddd;border-radius:12px;padding:10px;overflow:auto;margin:14px 0}.player-network-wrap svg{width:100%;min-width:680px;height:440px}.pgraph-edge{stroke:#9aa7bd;stroke-width:3;cursor:pointer}.pgraph-node{fill:#f5f8ff;stroke:#315da8;stroke-width:2;cursor:pointer}.pgraph-node-center{fill:#eaf2ff;stroke-width:4}.pgraph-node-label{font-size:12px;font-weight:700;text-anchor:middle;dominant-baseline:middle;pointer-events:none}.pgraph-label-bg{fill:white;stroke:#d7dce5;stroke-width:1;opacity:.97}.pgraph-edge-label{font-size:11px;fill:#444;text-anchor:middle;cursor:pointer}.optimized-relations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0}.optimized-relation{border:1px solid #ddd;border-radius:11px;padding:14px;background:white;cursor:pointer}.optimized-relation:hover,.optimized-relation.selected{border-color:#315da8;box-shadow:0 0 0 2px rgba(49,93,168,.10)}.optimized-relation h3{margin:0 0 8px}.reciprocal-badge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;background:#e8f1ff;color:#244f91;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em}.optimized-transfer{padding:6px 0;border-top:1px solid #eee}.optimized-transfer:first-of-type{border-top:0}.optimizer-detail{border:1px solid #b9c9e2;border-radius:12px;padding:15px;background:white;margin:16px 0}.optimizer-detail.empty{border-style:dashed;color:#666}.optimizer-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.optimizer-side{background:#f8f9fb;border-radius:9px;padding:10px}.optimized-proposal{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid #eee}.optimized-proposal-text{flex:1;min-width:280px}.one-way-explain{background:#fff8e5;border:1px solid #dfc981;border-radius:8px;padding:10px;margin-top:12px}@media(max-width:850px){.player-opt-summary{grid-template-columns:repeat(2,1fr)}.optimized-relations{grid-template-columns:1fr}.optimizer-detail-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body data-logged-in-player="<?= h($_SESSION['display_name'] ?? '') ?>">
@@ -472,39 +477,99 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 <?php endif; ?>
 
 </section>
-<section id="tab-trades" class="tab-panel" data-tab-panel="trades"><p class="tab-intro">Find reciprocal matches and manage trade proposals.</p><h2>Reciprocal trade matches<?php if ($viewPlayer): ?> — <?= h((string)$viewPlayer['display_name']) ?><?php endif; ?></h2>
-<?php if (!$tradeGroups): ?>
-<p>No reciprocal trades found yet for this player.</p>
-<?php else: foreach ($tradeGroups as $group): ?>
-<div class="trade-card">
-    <strong><?= h($group['other_player_name']) ?></strong>
-    <span class="pill"><?= count($group['options']) ?> option<?= count($group['options']) === 1 ? '' : 's' ?></span>
+<section id="tab-trades" class="tab-panel" data-tab-panel="trades">
+<p class="tab-intro">
+    Your recommended trades come from the same clan-wide optimizer used by Admin, filtered to the player you are currently logged in as.
+</p>
 
-    <?php foreach ($group['options'] as $option): ?>
-    <div class="trade-option">
-        <form method="post" class="trade-option-form">
-            <input type="hidden" name="propose_trade" value="1">
-            <input type="hidden" name="view_player_id" value="<?= (int)$viewPlayerId ?>">
-            <input type="hidden" name="other_player_id" value="<?= (int)$option['other_player_id'] ?>">
-            <input type="hidden" name="give_card_id" value="<?= (int)$option['give_card_id'] ?>">
-            <input type="hidden" name="give_qty" value="<?= (int)$option['give_qty'] ?>">
-            <input type="hidden" name="receive_card_id" value="<?= (int)$option['receive_card_id'] ?>">
-            <input type="hidden" name="receive_qty" value="<?= (int)$option['receive_qty'] ?>">
+<h2>Optimized trades<?php if ($tradePlayer): ?> — <?= h((string)$tradePlayer['display_name']) ?><?php endif; ?></h2>
 
-            <div class="trade-option-text">
-                <strong>Give:</strong> <?= (int)$option['give_qty'] ?> × <?= h($option['give_card_name']) ?>
-                &nbsp;→&nbsp;
-                <strong>Receive:</strong> <?= (int)$option['receive_qty'] ?> × <?= h($option['receive_card_name']) ?>
-            </div>
+<?php if ($viewPlayerId !== $playerId): ?>
+<div class="player-opt-note">
+    <strong>My Cards is currently showing <?= h((string)($viewPlayer['display_name'] ?? 'another player')) ?>,</strong>
+    but Trades always uses your logged-in identity:
+    <strong><?= h((string)($tradePlayer['display_name'] ?? '')) ?></strong>.
+</div>
+<?php endif; ?>
 
-            <button type="submit" class="primary">Propose trade</button>
-        </form>
+<?php if (!$optimizerEligible): ?>
+<div class="player-opt-warning">
+    This player is not currently eligible for optimized trading because their saved inventory is incomplete.
+    Scan/save all card pages first.
+</div>
+<?php elseif (!$optimizedRelationships): ?>
+<p>No useful optimized transfers are currently available for this player.</p>
+<?php else: ?>
+<?php
+    $optimizedGiveUnits = 0;
+    $optimizedReceiveUnits = 0;
+    $optimizedReciprocalCount = 0;
+
+    foreach ($optimizedRelationships as $relationship) {
+        if (!empty($relationship['reciprocal'])) {
+            $optimizedReciprocalCount++;
+        }
+        foreach ($relationship['transfers'] as $transfer) {
+            if ((int)$transfer['from_player_id'] === $playerId) {
+                $optimizedGiveUnits += (int)$transfer['qty'];
+            }
+            if ((int)$transfer['to_player_id'] === $playerId) {
+                $optimizedReceiveUnits += (int)$transfer['qty'];
+            }
+        }
+    }
+?>
+
+<div class="player-opt-summary">
+    <div class="player-opt-metric"><strong><?= count($optimizedRelationships) ?></strong><span>people to coordinate with</span></div>
+    <div class="player-opt-metric"><strong><?= $optimizedGiveUnits ?></strong><span>cards to give</span></div>
+    <div class="player-opt-metric"><strong><?= $optimizedReceiveUnits ?></strong><span>cards to receive</span></div>
+    <div class="player-opt-metric"><strong><?= $optimizedReciprocalCount ?></strong><span>reciprocal relationships</span></div>
+</div>
+
+<div class="player-opt-note">
+    This is your slice of the <strong>global optimum</strong>. One-way handoffs are included because they may be necessary
+    for the clan-wide plan even when that player does not directly return a card to you.
+</div>
+
+<h3>My optimized network</h3>
+<div class="player-network-wrap">
+    <svg id="playerOptimizedGraph" viewBox="0 0 1000 440" role="img" aria-label="Optimized trade network for logged-in player"></svg>
+</div>
+
+<h3>Recommended handoffs</h3>
+<div class="optimized-relations">
+<?php foreach ($optimizedRelationships as $relationship): ?>
+<?php
+    $otherPlayerName = (int)$relationship['player_a_id'] === $playerId
+        ? (string)$relationship['player_b_name']
+        : (string)$relationship['player_a_name'];
+?>
+<article class="optimized-relation" data-relationship-key="<?= h((string)$relationship['pair_key']) ?>" tabindex="0">
+    <h3>
+        <?= h((string)$tradePlayer['display_name']) ?> ↔ <?= h($otherPlayerName) ?>
+        <?php if (!empty($relationship['reciprocal'])): ?><span class="reciprocal-badge">reciprocal</span><?php endif; ?>
+    </h3>
+    <?php foreach ($relationship['transfers'] as $transfer): ?>
+    <div class="optimized-transfer">
+        <?php if ((int)$transfer['from_player_id'] === $playerId): ?>
+            <strong>Give:</strong> <?= (int)$transfer['qty'] ?> × <?= h((string)$transfer['card_name']) ?> → <?= h((string)$transfer['to_player_name']) ?>
+        <?php else: ?>
+            <strong>Receive:</strong> <?= (int)$transfer['qty'] ?> × <?= h((string)$transfer['card_name']) ?> ← <?= h((string)$transfer['from_player_name']) ?>
+        <?php endif; ?>
     </div>
     <?php endforeach; ?>
+</article>
+<?php endforeach; ?>
 </div>
-<?php endforeach; endif; ?>
 
-<h2>Trade workflow<?php if ($viewPlayer): ?> — <?= h((string)$viewPlayer['display_name']) ?><?php endif; ?></h2>
+<h3>Trade detail</h3>
+<div id="playerOptimizerDetail" class="optimizer-detail empty">
+    Click a person, graph edge, or recommended handoff to see the exact optimized exchange.
+</div>
+<?php endif; ?>
+
+<h2>Trade workflow<?php if ($tradePlayer): ?> — <?= h((string)$tradePlayer['display_name']) ?><?php endif; ?></h2>
 
 <h3>Open proposals <span class="pill"><?= count($openTrades) ?></span></h3>
 <?php if (!$openTrades): ?>
@@ -513,7 +578,7 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 <div class="trade-ledger">
 <?php foreach ($openTrades as $trade): ?>
 <?php
-    $isInitiator = (int)$trade['initiator_player_id'] === (int)$viewPlayerId;
+    $isInitiator = (int)$trade['initiator_player_id'] === (int)$playerId;
     $counterparty = $isInitiator
         ? (string)$trade['other_player_name']
         : (string)$trade['initiator_player_name'];
@@ -542,7 +607,7 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
             <form method="post">
                 <input type="hidden" name="complete_trade" value="1">
                 <input type="hidden" name="trade_id" value="<?= (int)$trade['id'] ?>">
-                <input type="hidden" name="view_player_id" value="<?= (int)$viewPlayerId ?>">
+                <input type="hidden" name="view_player_id" value="<?= (int)$playerId ?>">
                 <button type="submit" class="primary"
                     onclick="return confirm('Complete this trade and update both players’ inventories?')">
                     Mark completed
@@ -551,14 +616,14 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
             <form method="post">
                 <input type="hidden" name="cancel_trade" value="1">
                 <input type="hidden" name="trade_id" value="<?= (int)$trade['id'] ?>">
-                <input type="hidden" name="view_player_id" value="<?= (int)$viewPlayerId ?>">
+                <input type="hidden" name="view_player_id" value="<?= (int)$playerId ?>">
                 <button type="submit">Cancel</button>
             </form>
         </div>
     </div>
 
     <div class="trade-option">
-        <strong><?= h((string)$viewPlayer['display_name']) ?> gives:</strong>
+        <strong><?= h((string)$tradePlayer['display_name']) ?> gives:</strong>
         <?= $giveQty ?> × <?= h($giveName) ?>
         &nbsp;→&nbsp;
         <strong>receives:</strong>
@@ -580,7 +645,7 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 <div class="trade-ledger">
 <?php foreach ($tradeHistory as $trade): ?>
 <?php
-    $isInitiator = (int)$trade['initiator_player_id'] === (int)$viewPlayerId;
+    $isInitiator = (int)$trade['initiator_player_id'] === (int)$playerId;
     $counterparty = $isInitiator
         ? (string)$trade['other_player_name']
         : (string)$trade['initiator_player_name'];
@@ -622,6 +687,65 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 <?php endif; ?>
 
 </section>
+<?php if ($optimizerEligible && $optimizedRelationships): ?>
+<script>
+(function(){
+    const playerId=<?= (int)$playerId ?>;
+    const playerName=<?= json_encode((string)($tradePlayer['display_name'] ?? '')) ?>;
+    const relationships=<?= json_encode($optimizedRelationships, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
+    const svg=document.getElementById('playerOptimizedGraph');
+    const detail=document.getElementById('playerOptimizerDetail');
+    if(!svg||!relationships.length)return;
+    const ns='http://www.w3.org/2000/svg';
+    const make=(tag,attrs={})=>{const el=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,String(v)));return el;};
+    const byKey=new Map(relationships.map(r=>[String(r.pair_key),r]));
+    const otherFor=r=>Number(r.player_a_id)===playerId?{id:Number(r.player_b_id),name:String(r.player_b_name)}:{id:Number(r.player_a_id),name:String(r.player_a_name)};
+    const esc=v=>String(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
+
+    function addLabel(x,y,lines,key){
+        const g=make('g'); const text=make('text',{x,y,class:'pgraph-edge-label'});
+        lines.forEach((line,i)=>{const span=make('tspan',{x,dy:i===0?'0':'1.3em'});span.textContent=line;text.appendChild(span);});
+        g.appendChild(text);svg.appendChild(g);const b=text.getBBox();
+        g.insertBefore(make('rect',{x:b.x-6,y:b.y-4,width:b.width+12,height:b.height+8,rx:5,ry:5,class:'pgraph-label-bg'}),text);
+        g.addEventListener('click',()=>showDetail(key));
+    }
+    function addNode(id,name,x,y,center=false,key=null){
+        const g=make('g');g.append(make('circle',{cx:x,cy:y,r:center?42:38,class:'pgraph-node '+(center?'pgraph-node-center':'')}),make('text',{x,y,class:'pgraph-node-label'}));
+        g.lastChild.textContent=name.length>14?name.slice(0,13)+'…':name;svg.appendChild(g);if(key)g.addEventListener('click',()=>showDetail(key));
+    }
+
+    const center={x:500,y:220},others=relationships.map(r=>({...otherFor(r),relationship:r})),radius=180,pos=new Map();
+    others.forEach((o,i)=>{const a=-Math.PI/2+(Math.PI*2*i/others.length);pos.set(o.id,{x:center.x+Math.cos(a)*radius,y:center.y+Math.sin(a)*radius});});
+    others.forEach(o=>{
+        const p=pos.get(o.id),r=o.relationship,key=String(r.pair_key),line=make('line',{x1:center.x,y1:center.y,x2:p.x,y2:p.y,class:'pgraph-edge'});
+        line.addEventListener('click',()=>showDetail(key));svg.appendChild(line);
+        addLabel(center.x+(p.x-center.x)*.65,center.y+(p.y-center.y)*.65,r.transfers.map(t=>(Number(t.from_player_id)===playerId?'→':'←')+` ${t.qty}× ${t.card_name}`),key);
+    });
+    addNode(playerId,playerName,center.x,center.y,true);
+    others.forEach(o=>{const p=pos.get(o.id);addNode(o.id,o.name,p.x,p.y,false,String(o.relationship.pair_key));});
+
+    function showDetail(key){
+        const r=byKey.get(String(key));if(!r||!detail)return;
+        document.querySelectorAll('.optimized-relation').forEach(card=>card.classList.toggle('selected',card.dataset.relationshipKey===String(key)));
+        const outgoing=r.transfers.filter(t=>Number(t.from_player_id)===playerId),incoming=r.transfers.filter(t=>Number(t.to_player_id)===playerId),other=otherFor(r);
+        const lines=list=>list.length?list.map(t=>`<div class="optimized-transfer">${Number(t.qty)} × <strong>${esc(t.card_name)}</strong></div>`).join(''):'<div class="player-meta">None</div>';
+        let action='';
+        if(outgoing.length&&incoming.length){
+            const options=[];
+            outgoing.forEach(give=>incoming.forEach(receive=>options.push(`<div class="optimized-proposal"><div class="optimized-proposal-text">Give <strong>${Number(give.qty)} × ${esc(give.card_name)}</strong> and receive <strong>${Number(receive.qty)} × ${esc(receive.card_name)}</strong>.</div><form method="post"><input type="hidden" name="propose_trade" value="1"><input type="hidden" name="view_player_id" value="${playerId}"><input type="hidden" name="other_player_id" value="${Number(other.id)}"><input type="hidden" name="give_card_id" value="${Number(give.card_id)}"><input type="hidden" name="give_qty" value="${Number(give.qty)}"><input type="hidden" name="receive_card_id" value="${Number(receive.card_id)}"><input type="hidden" name="receive_qty" value="${Number(receive.qty)}"><button type="submit" class="primary">Propose trade</button></form></div>`)));
+            action=`<h4>Optimized proposal choices</h4>${options.join('')}`;
+        } else {
+            action='<div class="one-way-explain"><strong>One-way optimized handoff.</strong> The global plan recommends this transfer, but there is no direct reciprocal card in this relationship. Coordinate the handoff rather than creating an artificial trade proposal.</div>';
+        }
+        detail.className='optimizer-detail';
+        detail.innerHTML=`<h3>${esc(playerName)} ↔ ${esc(other.name)} ${r.reciprocal?'<span class="reciprocal-badge">reciprocal</span>':''}</h3><div class="optimizer-detail-grid"><div class="optimizer-side"><strong>You give</strong>${lines(outgoing)}</div><div class="optimizer-side"><strong>You receive</strong>${lines(incoming)}</div></div>${action}`;
+        detail.scrollIntoView({behavior:'smooth',block:'nearest'});
+    }
+    document.querySelectorAll('.optimized-relation[data-relationship-key]').forEach(card=>{const open=()=>showDetail(card.dataset.relationshipKey);card.addEventListener('click',open);card.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open();}});});
+})();
+</script>
+<?php endif; ?>
+
 <script>
 (function(){
  const allowed=new Set(['scan','cards','trades']); const serverDefault=<?= json_encode($activeTab) ?>;
