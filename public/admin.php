@@ -245,7 +245,7 @@ function h(string $value): string
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Clash Cards — Admin</title>
-<!-- Production build: V8.25 Friends-and-Family Beta -->
+<!-- Production build: V8.35 Group-Constrained Trades -->
 <style>
 :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#202124;background:#f6f7f9}
 *{box-sizing:border-box}body{margin:0}.shell{max-width:1240px;margin:0 auto;padding:24px}.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}.topbar h1{margin:0}.topbar a{color:#315da8;text-decoration:none}.notice{padding:11px 14px;border-radius:9px;margin:12px 0}.notice-ok{background:#eef9f0;border:1px solid #a6cfad}.notice-error{background:#fff2f2;border:1px solid #dfa5a5}.warning{background:#fff8e5;border:1px solid #dfc981;color:#5e4a00;padding:11px 14px;border-radius:9px;margin-bottom:18px}.trade-status{display:inline-block;font-size:.78rem;font-weight:800;padding:4px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em}.trade-status-completed{background:#e8f6eb;color:#216b2a}.layout{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:20px}.panel{background:white;border:1px solid #ddd;border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}.players{max-height:76vh;overflow:auto}.player-row{display:block;padding:11px 12px;border:1px solid #e2e2e2;border-radius:9px;margin:8px 0;color:inherit;text-decoration:none}.player-row:hover{background:#f7f9ff;border-color:#b9c8e5}.player-row.active{background:#eef4ff;border-color:#7596d2}.player-name{font-weight:750}.player-meta{color:#666;font-size:.84rem;margin-top:4px}.summary{display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px;margin:12px 0 18px}.metric{background:#f6f7f9;border-radius:9px;padding:10px;text-align:center}.metric strong{display:block;font-size:1.15rem}.metric span{display:block;color:#666;font-size:.8rem;margin-top:2px}.category{margin-top:20px}.category h3{margin:0 0 7px}table{border-collapse:collapse;width:100%;background:white}th,td{border-bottom:1px solid #e6e6e6;padding:8px;text-align:left}th{background:#fafafa;position:sticky;top:0}td.num{text-align:right;font-variant-numeric:tabular-nums}.need{font-weight:700;color:#a33}.extra{font-weight:700;color:#18733a}.delete-zone{margin-top:26px;padding:16px;border:1px solid #d9a2a2;background:#fff7f7;border-radius:10px}.delete-zone h3{color:#9a2525;margin-top:0}.delete-form{display:flex;gap:9px;align-items:end;flex-wrap:wrap}.delete-form label{display:grid;gap:5px;flex:1;min-width:220px}.delete-form input{padding:8px;border:1px solid #bbb;border-radius:7px}.danger{background:#b3261e;color:white;border:0;border-radius:7px;padding:9px 13px;font-weight:700;cursor:pointer}.empty{color:#666}@media(max-width:850px){.layout{grid-template-columns:1fr}.players{max-height:none}.summary{grid-template-columns:repeat(3,1fr)}}
@@ -279,9 +279,9 @@ function h(string $value): string
 <section>
     <h2>Global Trade Optimizer</h2>
     <p class="optimizer-note">
-        This plan changes <strong>nothing</strong> in the database. It maximizes total needed-card units fulfilled,
-        then maximizes distinct players helped, prefers reciprocal/balanced exchanges, and finally consolidates
-        donor/receiver relationships to reduce handoffs.
+        This plan changes <strong>nothing</strong> in the database. V8.35 counts only executable in-game trades:
+        both players must exchange cards from the <strong>same card group</strong>. Cross-group and one-way handoffs
+        are excluded from fulfillment.
     </p>
 
     <div class="optimizer-summary">
@@ -350,13 +350,10 @@ function h(string $value): string
                 <?php if (!empty($relationship['reciprocal'])): ?><span class="reciprocal-badge">reciprocal</span><?php endif; ?>
             </h3>
 
-            <?php foreach ($relationship['transfers'] as $transfer): ?>
+            <?php foreach (($relationship['trade_groups'] ?? []) as $tradeGroup): ?>
             <div class="transfer-line">
-                <strong><?= h((string)$transfer['from_player_name']) ?></strong>
-                gives
-                <strong><?= (int)$transfer['qty'] ?> × <?= h((string)$transfer['card_name']) ?></strong>
-                →
-                <strong><?= h((string)$transfer['to_player_name']) ?></strong>
+                <strong><?= h((string)$tradeGroup['category']) ?></strong>:
+                <?= (int)$tradeGroup['trade_count'] ?> executable trade<?= (int)$tradeGroup['trade_count'] === 1 ? '' : 's' ?>
             </div>
             <?php endforeach; ?>
         </article>
@@ -541,64 +538,45 @@ function h(string $value): string
         if(!r || !detail) return;
 
         document.querySelectorAll('.handoff').forEach(card=>{
-            card.classList.toggle('selected', card.dataset.relationshipKey===String(key));
+            card.classList.toggle('selected',card.dataset.relationshipKey===String(key));
         });
 
-        const {aToB,bToA}=relationshipDirections(r);
-        const transferHtml = list => list.length
-            ? list.map(t=>`<div class="transfer-line"><strong>${escapeHtml(t.from_player_name)}</strong> gives <strong>${Number(t.qty)} × ${escapeHtml(t.card_name)}</strong> → <strong>${escapeHtml(t.to_player_name)}</strong></div>`).join('')
-            : '<div class="player-meta">No cards in this direction.</div>';
+        const groupHtml=(r.trade_groups||[]).map(group=>{
+            const trades=(group.trades||[]).map(trade=>`
+              <div class="proposal-option">
+                <div class="proposal-text">
+                  <strong>${escapeHtml(group.category)}</strong>:
+                  ${escapeHtml(trade.player_a_name)} gives
+                  <strong>1 × ${escapeHtml(trade.player_a_gives_card_name)}</strong>
+                  and ${escapeHtml(trade.player_b_name)} gives
+                  <strong>1 × ${escapeHtml(trade.player_b_gives_card_name)}</strong>.
+                </div>
+                ${proposalForm(r,{
+                    from_player_id:trade.player_a_id,
+                    to_player_id:trade.player_b_id,
+                    card_id:trade.player_a_gives_card_id,
+                    qty:1
+                },{
+                    from_player_id:trade.player_b_id,
+                    to_player_id:trade.player_a_id,
+                    card_id:trade.player_b_gives_card_id,
+                    qty:1
+                })}
+              </div>`).join('');
 
-        let proposalHtml='';
-        if(aToB.length && bToA.length){
-            const combos=[];
-            aToB.forEach(give=>{
-                bToA.forEach(receive=>{
-                    combos.push(`
-                      <div class="proposal-option">
-                        <div class="proposal-text">
-                          <strong>${escapeHtml(give.from_player_name)}</strong> gives
-                          <strong>${Number(give.qty)} × ${escapeHtml(give.card_name)}</strong>
-                          and receives
-                          <strong>${Number(receive.qty)} × ${escapeHtml(receive.card_name)}</strong>.
-                        </div>
-                        ${proposalForm(r,give,receive)}
-                      </div>`);
-                });
-            });
-            // Also expose the reverse initiator perspective when it is not the
-            // exact same single combination.
-            if(!(aToB.length===1 && bToA.length===1)){
-                bToA.forEach(give=>{
-                    aToB.forEach(receive=>{
-                        combos.push(`
-                          <div class="proposal-option">
-                            <div class="proposal-text">
-                              <strong>${escapeHtml(give.from_player_name)}</strong> gives
-                              <strong>${Number(give.qty)} × ${escapeHtml(give.card_name)}</strong>
-                              and receives
-                              <strong>${Number(receive.qty)} × ${escapeHtml(receive.card_name)}</strong>.
-                            </div>
-                            ${proposalForm(r,give,receive)}
-                          </div>`);
-                    });
-                });
-            }
-            proposalHtml=`<div class="proposal-options"><h4>Proposal choices</h4>${combos.join('')}</div>`;
-        }else{
-            proposalHtml=`<div class="one-way-note"><strong>One-way optimized handoff.</strong> This still improves global fulfillment, but the current trade-proposal schema requires a card moving in each direction, so V8.23 leaves this as a recommendation rather than inventing a fake reciprocal trade.</div>`;
-        }
+            return `
+              <div class="relationship-side" style="margin-top:10px">
+                <strong>${escapeHtml(group.category)} — ${Number(group.trade_count)} valid trade${Number(group.trade_count)===1?'':'s'}</strong>
+                ${trades}
+              </div>`;
+        }).join('');
 
         detail.className='relationship-detail';
         detail.innerHTML=`
           <h3>${escapeHtml(r.player_a_name)} ↔ ${escapeHtml(r.player_b_name)}
-              ${r.reciprocal ? '<span class="reciprocal-badge">reciprocal</span>' : ''}</h3>
-          <div class="player-meta">${Number(r.unit_count)} optimized card unit${Number(r.unit_count)===1?'':'s'} across this relationship.</div>
-          <div class="relationship-detail-grid">
-            <div class="relationship-side"><strong>${escapeHtml(r.player_a_name)} → ${escapeHtml(r.player_b_name)}</strong>${transferHtml(aToB)}</div>
-            <div class="relationship-side"><strong>${escapeHtml(r.player_b_name)} → ${escapeHtml(r.player_a_name)}</strong>${transferHtml(bToA)}</div>
-          </div>
-          ${proposalHtml}`;
+              <span class="reciprocal-badge">same-group only</span></h3>
+          <div class="player-meta">${Number(r.trade_count||0)} executable in-game trade${Number(r.trade_count||0)===1?'':'s'} across this relationship.</div>
+          <div class="proposal-options">${groupHtml || '<div class="one-way-note">No executable same-group trades.</div>'}</div>`;
 
         detail.scrollIntoView({behavior:'smooth',block:'nearest'});
     }

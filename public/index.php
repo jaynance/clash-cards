@@ -307,7 +307,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.34 Paired Trade Offer UI -->
+<!-- Production build: V8.35 Group-Constrained Trades -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -574,7 +574,7 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 </section>
 <section id="tab-trades" class="tab-panel" data-tab-panel="trades">
 <p class="tab-intro">
-    Your recommended trades come from the same clan-wide optimizer used by Admin, filtered to the player you are currently logged in as.
+    Your recommended trades come from the same clan-wide optimizer used by Admin. V8.35 only recommends executable reciprocal trades where both cards are in the same Clash card group.
 </p>
 
 <h2>Optimized trades<?php if ($tradePlayer): ?> — <?= h((string)$tradePlayer['display_name']) ?><?php endif; ?></h2>
@@ -623,8 +623,7 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 </div>
 
 <div class="player-opt-note">
-    This is your slice of the <strong>global optimum</strong>. One-way handoffs are included because they may be necessary
-    for the clan-wide plan even when that player does not directly return a card to you.
+    This is your slice of the <strong>group-constrained clan plan</strong>. Every recommendation below has a reciprocal card in the same group, so it can be created as a real in-game trade.
 </div>
 
 <h3>My optimized network</h3>
@@ -645,13 +644,10 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
         <?= h((string)$tradePlayer['display_name']) ?> ↔ <?= h($otherPlayerName) ?>
         <?php if (!empty($relationship['reciprocal'])): ?><span class="reciprocal-badge">reciprocal</span><?php endif; ?>
     </h3>
-    <?php foreach ($relationship['transfers'] as $transfer): ?>
+    <?php foreach (($relationship['trade_groups'] ?? []) as $tradeGroup): ?>
     <div class="optimized-transfer">
-        <?php if ((int)$transfer['from_player_id'] === $playerId): ?>
-            <strong>Give:</strong> <?= (int)$transfer['qty'] ?> × <?= h((string)$transfer['card_name']) ?> → <?= h((string)$transfer['to_player_name']) ?>
-        <?php else: ?>
-            <strong>Receive:</strong> <?= (int)$transfer['qty'] ?> × <?= h((string)$transfer['card_name']) ?> ← <?= h((string)$transfer['from_player_name']) ?>
-        <?php endif; ?>
+        <strong><?= h((string)$tradeGroup['category']) ?></strong> —
+        <?= (int)$tradeGroup['trade_count'] ?> valid trade<?= (int)$tradeGroup['trade_count'] === 1 ? '' : 's' ?>
     </div>
     <?php endforeach; ?>
 </article>
@@ -824,75 +820,75 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
         document.querySelectorAll('.optimized-relation').forEach(card=>card.classList.toggle('selected',card.dataset.relationshipKey===String(key)));
         const outgoing=r.transfers.filter(t=>Number(t.from_player_id)===playerId),incoming=r.transfers.filter(t=>Number(t.to_player_id)===playerId),other=otherFor(r);
         const lines=list=>list.length?list.map(t=>`<div class="optimized-transfer">${Number(t.qty)} × <strong>${esc(t.card_name)}</strong></div>`).join(''):'<div class="player-meta">None</div>';
-        let action='';
-        if(outgoing.length&&incoming.length){
-            const giveChoices=outgoing.map((give,i)=>`
-              <label class="trade-choice">
-                <input type="radio" name="optimizer_give" value="${i}" ${i===0?'checked':''}>
-                <span class="trade-choice-card">
-                  <strong>${Number(give.qty)} × ${esc(give.card_name)}</strong>
-                  <small>Offer to ${esc(other.name)}</small>
-                </span>
-              </label>`).join('');
+        const groups=(r.trade_groups||[]).map(group=>{
+          const groupOutgoing=(group.transfers||[]).filter(t=>Number(t.from_player_id)===playerId);
+          const groupIncoming=(group.transfers||[]).filter(t=>Number(t.to_player_id)===playerId);
+          return {...group,outgoing:groupOutgoing,incoming:groupIncoming};
+        }).filter(group=>group.outgoing.length&&group.incoming.length);
 
-            const receiveChoices=incoming.map((receive,i)=>`
-              <label class="trade-choice">
-                <input type="radio" name="optimizer_receive" value="${i}" ${i===0?'checked':''}>
-                <span class="trade-choice-card">
-                  <strong>${Number(receive.qty)} × ${esc(receive.card_name)}</strong>
-                  <small>Request from ${esc(other.name)}</small>
-                </span>
-              </label>`).join('');
+        const action=groups.map((group,groupIndex)=>{
+          const giveChoices=group.outgoing.map((give,i)=>`
+            <label class="trade-choice">
+              <input type="radio" name="optimizer_give_${groupIndex}" value="${i}" ${i===0?'checked':''}>
+              <span class="trade-choice-card">
+                <strong>${Number(give.qty)} × ${esc(give.card_name)}</strong>
+                <small>Offer to ${esc(other.name)}</small>
+              </span>
+            </label>`).join('');
 
-            action=`
-              <div class="trade-builder" data-trade-builder>
-                <h4>Create trade offer</h4>
-                <div class="trade-builder-grid">
-                  <div class="trade-choice-panel">
-                    <h5>Card to offer</h5>
-                    <div class="trade-choice-list">${giveChoices}</div>
-                  </div>
+          const receiveChoices=group.incoming.map((receive,i)=>`
+            <label class="trade-choice">
+              <input type="radio" name="optimizer_receive_${groupIndex}" value="${i}" ${i===0?'checked':''}>
+              <span class="trade-choice-card">
+                <strong>${Number(receive.qty)} × ${esc(receive.card_name)}</strong>
+                <small>Request from ${esc(other.name)}</small>
+              </span>
+            </label>`).join('');
 
-                  <div class="trade-arrow">→</div>
-
-                  <div class="trade-choice-panel">
-                    <h5>Select card to receive</h5>
-                    <div class="trade-choice-list">${receiveChoices}</div>
-                  </div>
+          return `
+            <div class="trade-builder" data-trade-builder data-group-index="${groupIndex}">
+              <h4>${esc(group.category)} Trade Offer</h4>
+              <div class="trade-builder-grid">
+                <div class="trade-choice-panel">
+                  <h5>Card to offer</h5>
+                  <div class="trade-choice-list">${giveChoices}</div>
                 </div>
-
-                <div class="trade-builder-summary" data-trade-summary></div>
-
-                <form method="post" data-trade-form>
-                  <input type="hidden" name="propose_trade" value="1">
-                  <input type="hidden" name="view_player_id" value="${playerId}">
-                  <input type="hidden" name="other_player_id" value="${Number(other.id)}">
-                  <input type="hidden" name="give_card_id">
-                  <input type="hidden" name="give_qty">
-                  <input type="hidden" name="receive_card_id">
-                  <input type="hidden" name="receive_qty">
-                  <div class="trade-builder-actions">
-                    <button type="submit" class="primary">Create Trade Offer</button>
-                  </div>
-                </form>
-              </div>`;
-        } else {
-            action='<div class="one-way-explain"><strong>One-way optimized handoff.</strong> The global plan recommends this transfer, but there is no card for you to request directly from this player, so a normal in-game trade offer cannot be created from this relationship.</div>';
-        }
+                <div class="trade-arrow">→</div>
+                <div class="trade-choice-panel">
+                  <h5>Select ${esc(group.category)} card to receive</h5>
+                  <div class="trade-choice-list">${receiveChoices}</div>
+                </div>
+              </div>
+              <div class="trade-builder-summary" data-trade-summary></div>
+              <form method="post" data-trade-form>
+                <input type="hidden" name="propose_trade" value="1">
+                <input type="hidden" name="view_player_id" value="${playerId}">
+                <input type="hidden" name="other_player_id" value="${Number(other.id)}">
+                <input type="hidden" name="give_card_id">
+                <input type="hidden" name="give_qty">
+                <input type="hidden" name="receive_card_id">
+                <input type="hidden" name="receive_qty">
+                <div class="trade-builder-actions">
+                  <button type="submit" class="primary">Create ${esc(group.category)} Trade Offer</button>
+                </div>
+              </form>
+            </div>`;
+        }).join('');
 
         detail.className='optimizer-detail';
-        detail.innerHTML=`<h3>${esc(playerName)} ↔ ${esc(other.name)} ${r.reciprocal?'<span class="reciprocal-badge">reciprocal</span>':''}</h3><div class="optimizer-detail-grid"><div class="optimizer-side"><strong>You can offer</strong>${lines(outgoing)}</div><div class="optimizer-side"><strong>You can request</strong>${lines(incoming)}</div></div>${action}`;
+        detail.innerHTML=`<h3>${esc(playerName)} ↔ ${esc(other.name)} <span class="reciprocal-badge">same-group only</span></h3>${action || '<div class="one-way-explain">No executable same-group trade is available in this relationship.</div>'}`;
 
-        const builder=detail.querySelector('[data-trade-builder]');
-        if(builder){
+        detail.querySelectorAll('[data-trade-builder]').forEach(builder=>{
+          const groupIndex=Number(builder.dataset.groupIndex);
+          const group=groups[groupIndex];
           const form=builder.querySelector('[data-trade-form]');
           const summary=builder.querySelector('[data-trade-summary]');
 
-          const refreshTradeBuilder=()=>{
-            const giveIndex=Number(builder.querySelector('input[name="optimizer_give"]:checked')?.value ?? -1);
-            const receiveIndex=Number(builder.querySelector('input[name="optimizer_receive"]:checked')?.value ?? -1);
-            const give=outgoing[giveIndex];
-            const receive=incoming[receiveIndex];
+          const refresh=()=>{
+            const giveIndex=Number(builder.querySelector(`input[name="optimizer_give_${groupIndex}"]:checked`)?.value ?? -1);
+            const receiveIndex=Number(builder.querySelector(`input[name="optimizer_receive_${groupIndex}"]:checked`)?.value ?? -1);
+            const give=group.outgoing[giveIndex];
+            const receive=group.incoming[receiveIndex];
             const button=form.querySelector('button[type="submit"]');
 
             if(!give||!receive){
@@ -901,23 +897,23 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
               return;
             }
 
+            if(give.category!==receive.category || give.category!==group.category){
+              button.disabled=true;
+              summary.textContent='Invalid cross-group pairing blocked.';
+              return;
+            }
+
             button.disabled=false;
             form.querySelector('input[name="give_card_id"]').value=String(give.card_id);
-            form.querySelector('input[name="give_qty"]').value=String(give.qty);
+            form.querySelector('input[name="give_qty"]').value='1';
             form.querySelector('input[name="receive_card_id"]').value=String(receive.card_id);
-            form.querySelector('input[name="receive_qty"]').value=String(receive.qty);
-
-            summary.innerHTML=
-              `<strong>You offer:</strong> ${Number(give.qty)} × ${esc(give.card_name)}
-               &nbsp; → &nbsp;
-               <strong>You request:</strong> ${Number(receive.qty)} × ${esc(receive.card_name)}`;
+            form.querySelector('input[name="receive_qty"]').value='1';
+            summary.innerHTML=`<strong>You offer:</strong> 1 × ${esc(give.card_name)} &nbsp; → &nbsp; <strong>You request:</strong> 1 × ${esc(receive.card_name)}`;
           };
 
-          builder.querySelectorAll('input[type="radio"]').forEach(input=>{
-            input.addEventListener('change',refreshTradeBuilder);
-          });
-          refreshTradeBuilder();
-        }
+          builder.querySelectorAll('input[type="radio"]').forEach(input=>input.addEventListener('change',refresh));
+          refresh();
+        });
 
         detail.scrollIntoView({behavior:'smooth',block:'nearest'});
     }
