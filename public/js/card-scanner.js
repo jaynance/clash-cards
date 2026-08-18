@@ -1,6 +1,6 @@
-const SCANNER_VERSION = "V8.32";
-const SCANNER_BUILD = "Set Geometry Recovery + Long Name Match";
-const SCANNER_BUILD_ID = "v8.32-set-geometry-long-name";
+const SCANNER_VERSION = "V8.33";
+const SCANNER_BUILD = "Badge OCR First + Extended Search";
+const SCANNER_BUILD_ID = "v8.33-badge-ocr-first";
 
 function scannerVersionLine() {
   return `SCANNER | version=${SCANNER_VERSION} | build="${SCANNER_BUILD}" | id=${SCANNER_BUILD_ID}`;
@@ -442,22 +442,33 @@ async function run() {
           const known=acceptTemplateMatch(match);
           glyphDebug=match.glyph ? `${match.glyph.w}x${match.glyph.h}/${match.glyph.components}@${match.glyph.badgeInterior}` : "none";
 
-          if(known.accepted){
+          // V8.33: OCR the complete yellow badge first. The x + digit(s) have
+          // much more context here than in the extracted binary glyph, and this
+          // is especially important for x3/x4/x5 at smaller screenshot sizes.
+          let fullBadgeOcr=null;
+          if(worker){
+            fullBadgeOcr=await readBadgeQuantityCanvas(worker,badge.ocrCanvas,32);
+          }
+
+          if(fullBadgeOcr?.qty!==null){
+            qty=fullBadgeOcr.qty;
+            confidence=fullBadgeOcr.confidence;
+            detail=`badge-ocr:${fullBadgeOcr.raw}`;
+          } else if(known.accepted){
             qty=known.qty;
             confidence=known.confidence;
             detail=`glyph-${known.detail}`;
           } else if(worker){
             const glyphForOcr=match.glyph ? upscaleGlyphForOcr(match.glyph.canvas) : badge.ocrCanvas;
-            const ocr=await readBadgeQuantityCanvas(worker,glyphForOcr);
+            const ocr=await readBadgeQuantityCanvas(worker,glyphForOcr,50);
             if(ocr.qty!==null){
               qty=ocr.qty;
               confidence=ocr.confidence;
-              detail=`ocr:${ocr.raw}`;
+              detail=`glyph-ocr:${ocr.raw}`;
             } else {
-              // A real badge shape was found, but its text was unreadable.
               qty=2;
               confidence="low";
-              detail=`unread-badge | ${known.detail} | ocr=${JSON.stringify(ocr.attempts)}`;
+              detail=`unread-badge | ${known.detail} | badgeOcr=${JSON.stringify(fullBadgeOcr?.attempts||[])} | glyphOcr=${JSON.stringify(ocr.attempts)}`;
             }
           } else {
             qty=2;
@@ -1697,10 +1708,14 @@ function extractBadge(img,box){
   const source=imageCanvas(img);
   const ctx=source.getContext("2d",{willReadFrequently:true});
 
-  const sx=Math.max(0,Math.round(box.x+box.w*.10));
-  const sy=Math.max(0,Math.round(box.y+box.h*.64));
-  const sw=Math.max(8,Math.min(source.width-sx,Math.round(box.w*.80)));
-  const sh=Math.max(8,Math.min(source.height-sy,Math.round(box.h*.35)));
+  // V8.33: the colored card-frame component sometimes stops just above the
+  // quantity badge. Search a little wider and, importantly, slightly below the
+  // detected frame instead of assuming the badge is completely inside it.
+  const sx=Math.max(0,Math.round(box.x+box.w*.05));
+  const sy=Math.max(0,Math.round(box.y+box.h*.60));
+  const sw=Math.max(8,Math.min(source.width-sx,Math.round(box.w*.90)));
+  const desiredBottom=box.y+box.h*1.13;
+  const sh=Math.max(8,Math.min(source.height-sy,Math.round(desiredBottom-sy)));
   if(sw<=0||sh<=0) return null;
 
   const id=ctx.getImageData(sx,sy,sw,sh);
@@ -1772,10 +1787,10 @@ function extractBadge(img,box){
     // Hard geometry lock. These bounds are based on verified real badges from
     // V8.7 logs and intentionally exclude false artwork hits such as
     // Sneaky Archer at Y≈0.81 and oversized Archer artwork.
-    x.relX>=.24 && x.relX<=.66 &&
-    x.relY>=.865 && x.relY<=.965 &&
-    x.relW>=.20 && x.relW<=.62 &&
-    x.relH>=.075 && x.relH<=.235 &&
+    x.relX>=.20 && x.relX<=.70 &&
+    x.relY>=.84 && x.relY<=1.08 &&
+    x.relW>=.18 && x.relW<=.66 &&
+    x.relH>=.060 && x.relH<=.26 &&
     x.aspect>=1.25 && x.aspect<=5.2 &&
     x.fill>=.16
   ).sort((a,b)=>b.score-a.score);
@@ -2228,13 +2243,13 @@ function upscaleGlyphForOcr(glyphCanvas){
   return c;
 }
 
-async function readBadgeQuantityCanvas(worker,baseCanvas){
+async function readBadgeQuantityCanvas(worker,baseCanvas,minConfidence=55){
   await worker.setParameters({
     tessedit_char_whitelist:"xX0123456789",
     tessedit_pageseg_mode:"7"
   });
 
-  const variants=["raw","gray","threshold-dark","threshold-light"];
+  const variants=["badge-dark","raw","gray","threshold-dark","threshold-light"];
   const attempts=[];
 
   for(const variant of variants){
@@ -2254,11 +2269,11 @@ async function readBadgeQuantityCanvas(worker,baseCanvas){
       // The prior build produced many bogus "7" values. Be much more
       // conservative: OCR must have meaningful confidence before it can
       // create a quantity that templates did not support.
-      if(qty>=2&&qty<=99 && ocrConfidence>=55){
+      if(qty>=2&&qty<=9 && ocrConfidence>=minConfidence){
         return {
           qty,
           raw:txt,
-          confidence:ocrConfidence>=70?"medium":"low",
+          confidence:ocrConfidence>=65?"medium":"low",
           ocrConfidence,
           attempts
         };
@@ -2287,6 +2302,13 @@ function preprocessBadgeForOcr(baseCanvas,variant){
     if(variant==="gray") v=lum;
     else if(variant==="threshold-dark") v=lum<130?0:255;
     else if(variant==="threshold-light") v=lum<175?0:255;
+    else if(variant==="badge-dark"){
+      const hsv=rgbToHsv(id.data[i],id.data[i+1],id.data[i+2]);
+      // Preserve the black x/digits and suppress the yellow/gold badge face,
+      // colored artwork, and highlights.
+      const isDark=lum<145 && hsv.v<.72;
+      v=isDark?0:255;
+    }
 
     id.data[i]=id.data[i+1]=id.data[i+2]=v;
   }
