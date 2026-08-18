@@ -1,6 +1,6 @@
-const SCANNER_VERSION = "V8.31";
-const SCANNER_BUILD = "Focused Username OCR";
-const SCANNER_BUILD_ID = "v8.31-focused-username-ocr";
+const SCANNER_VERSION = "V8.32";
+const SCANNER_BUILD = "Set Geometry Recovery + Long Name Match";
+const SCANNER_BUILD_ID = "v8.32-set-geometry-long-name";
 
 function scannerVersionLine() {
   return `SCANNER | version=${SCANNER_VERSION} | build="${SCANNER_BUILD}" | id=${SCANNER_BUILD_ID}`;
@@ -234,6 +234,7 @@ async function run() {
     debug.push(scannerVersionLine());
 
     const candidates=[];
+    const gridFailures=[];
 
     for (let i=0; i<files.length; i++) {
       const img = await loadImage(files[i]);
@@ -250,6 +251,7 @@ async function run() {
 
       if (!geometry) {
         debug.push(`${files[i].name}: could not locate card grid after primary + fallback`);
+        gridFailures.push({file:files[i],img});
         continue;
       }
 
@@ -270,6 +272,29 @@ async function run() {
         `Analyzed ${files[i].name}`,
         8 + Math.round(14*(i+1)/files.length)
       );
+    }
+
+    // V8.32: screenshots uploaded together normally come from one capture session,
+    // so their card panel geometry is effectively identical. If one page loses
+    // several colored frame components, retry it using geometry from a successful
+    // same-size screenshot. Page scoring still verifies the recovered page.
+    if(gridFailures.length && candidates.length){
+      for(const failed of gridFailures){
+        const donors=candidates
+          .filter(c=>c.img.naturalWidth===failed.img.naturalWidth && c.img.naturalHeight===failed.img.naturalHeight)
+          .sort((a,b)=>geometryDonorQuality(b.geometry)-geometryDonorQuality(a.geometry));
+
+        if(!donors.length){
+          debug.push(`${failed.file.name}: SET_GEOMETRY_RECOVERY | result=failed | reason=no-same-size-donor`);
+          continue;
+        }
+
+        const donor=donors[0];
+        const geometry=cloneGeometryForSetRecovery(donor.geometry);
+        const pageResult=scoreAllPages(failed.img,geometry);
+        candidates.push({file:failed.file,img:failed.img,geometry,pageResult});
+        debug.push(`${failed.file.name}: SET_GEOMETRY_RECOVERY | result=accepted | donor=${donor.file.name} | signature=${pageResult.signature} | scores=${formatPageScores(pageResult.pageScores)} | grid=${geometrySummary(geometry)}`);
+      }
     }
 
     const assignment = assignPagesGlobally(candidates);
@@ -339,7 +364,8 @@ async function run() {
         const matchedKnownPlayer=[
           "database-exact-normalized",
           "database-ocr-confusion",
-          "database-fuzzy"
+          "database-fuzzy",
+          "database-fuzzy-long-suffix"
         ].includes(usernameResolution.reason);
 
         const suspiciousNewName=
@@ -515,6 +541,27 @@ async function run() {
 
 /* ---------------- Dynamic grid geometry ---------------- */
 
+
+function geometryDonorQuality(g){
+  if(!g||!Array.isArray(g.boxes)||g.boxes.length!==12) return -1;
+  const widths=g.boxes.map(b=>b.w);
+  const heights=g.boxes.map(b=>b.h);
+  const wm=median(widths), hm=median(heights);
+  const spread=widths.reduce((s,v)=>s+Math.abs(v-wm),0)+heights.reduce((s,v)=>s+Math.abs(v-hm),0);
+  return 1000-spread;
+}
+
+function cloneGeometryForSetRecovery(g){
+  return {
+    scale:g.scale,
+    panelLeft:g.panelLeft,
+    panelRight:g.panelRight,
+    row1:[...g.row1],
+    row2:[...g.row2],
+    boxes:g.boxes.map(b=>({...b})),
+    gridMethod:"set-recovery"
+  };
+}
 
 function detectGridGeometry(img){
   const primary=detectGridGeometryPrimary(img);
@@ -2611,10 +2658,21 @@ function reconcileUsernameWithKnownPlayers(ocrName){
   const allowed=key.length>=8 ? 2 : 1;
   const uniqueEnough=!second || second.distance>=best.distance+1;
 
-  if(best.distance<=allowed && uniqueEnough){
+  const bestKey=usernameMatchKey(best.name);
+  let commonSuffix=0;
+  while(
+    commonSuffix<key.length && commonSuffix<bestKey.length &&
+    key[key.length-1-commonSuffix]===bestKey[bestKey.length-1-commonSuffix]
+  ) commonSuffix++;
+
+  const longSuffixMatch=
+    key.length>=9 && bestKey.length>=9 &&
+    best.distance<=4 && commonSuffix>=6 && uniqueEnough;
+
+  if((best.distance<=allowed && uniqueEnough) || longSuffixMatch){
     return {
       name:best.name,
-      reason:"database-fuzzy",
+      reason:longSuffixMatch?"database-fuzzy-long-suffix":"database-fuzzy",
       distance:best.distance
     };
   }

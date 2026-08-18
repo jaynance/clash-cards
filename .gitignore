@@ -3,3 +3,4 @@ storage/logs/*.log
 .DS_Store
 .idea
 /node_modules/
+/test-results/
