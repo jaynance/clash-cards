@@ -1,0 +1,16 @@
+# V8.25 production defaults.
+# Network Solutions commonly uses Apache. If your hosting plan rejects one of
+# these directives with HTTP 500, temporarily rename this file and re-enable
+# supported directives one at a time.
+
+Options -Indexes
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "same-origin"
+</IfModule>
+
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>

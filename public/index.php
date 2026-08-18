@@ -1,8 +1,6 @@
 <?php
 declare(strict_types=1);
 
-session_start();
-
 $configPath = dirname(__DIR__) . '/config.php';
 if (!file_exists($configPath)) {
     http_response_code(500);
@@ -10,6 +8,11 @@ if (!file_exists($configPath)) {
 }
 
 $config = require $configPath;
+
+require dirname(__DIR__) . '/src/Production.php';
+Production::configure($config['app'] ?? []);
+
+session_start();
 
 require dirname(__DIR__) . '/src/Database.php';
 require dirname(__DIR__) . '/src/InventoryService.php';
@@ -62,7 +65,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $playerId && isset($_POST['propose_
         );
         exit;
     } catch (Throwable $e) {
-        $message = 'Trade could not be proposed: ' . $e->getMessage();
+        Production::report($e, 'Trade proposal failed');
+        $message = 'Trade could not be proposed. Please try again.';
     }
 }
 
@@ -78,7 +82,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $playerId && isset($_POST['complete
         );
         exit;
     } catch (Throwable $e) {
-        $message = 'Trade could not be completed: ' . $e->getMessage();
+        Production::report($e, 'Trade completion failed');
+        $message = 'Trade could not be completed. The inventory may have changed.';
     }
 }
 
@@ -94,7 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $playerId && isset($_POST['cancel_t
         );
         exit;
     } catch (Throwable $e) {
-        $message = 'Trade could not be cancelled: ' . $e->getMessage();
+        Production::report($e, 'Trade cancellation failed');
+        $message = 'Trade could not be cancelled. Please try again.';
     }
 }
 
@@ -237,7 +243,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Workflow build: V8.24 Player Optimized Trades -->
+<!-- Production build: V8.25 Friends-and-Family Beta -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}

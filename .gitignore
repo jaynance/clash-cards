@@ -1,1 +1,4 @@
-.idea/
+config.php
+storage/logs/*.log
+.DS_Store
+.idea
