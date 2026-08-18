@@ -41,3 +41,6 @@ jobs:
             tests/**
             package.json
             playwright.config.mjs
+            package-lock.json
+            node_modules/**
+            test-results/**
