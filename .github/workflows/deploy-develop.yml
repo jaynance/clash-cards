@@ -38,3 +38,6 @@ jobs:
             storage/logs/**
             README.md
             DEPLOYMENT.md
+            tests
+            package.json
+            playwrite.config.mjs

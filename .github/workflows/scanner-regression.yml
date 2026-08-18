@@ -1,0 +1,44 @@
+name: Scanner regression tests
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'public/js/card-scanner.js'
+      - 'public/assets/badges/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'playwright.config.mjs'
+  pull_request:
+    paths:
+      - 'public/js/card-scanner.js'
+      - 'public/assets/badges/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'playwright.config.mjs'
+
+jobs:
+  scanner-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:scanner
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-regression-report
+          path: |
+            test-results/
+          retention-days: 14

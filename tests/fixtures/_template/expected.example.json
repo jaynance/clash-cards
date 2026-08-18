@@ -1,0 +1,15 @@
+{
+  "dataset": "replace-me",
+  "description": "Describe player, device, resolution and source.",
+  "expected_pages": 5,
+  "username": {
+    "assert": false,
+    "note": "Enable only after the expected player name is verified."
+  },
+  "cards": {
+    "Barbarian": 1
+  },
+  "aliases": {
+    "Builder Base|Baby Dragon": "Builder Baby Dragon"
+  }
+}

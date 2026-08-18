@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<base href="/public/">
+<title>Clash Cards Scanner Regression Harness</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/tesseract.min.js"></script>
+<style>
+body{font-family:system-ui;padding:20px}
+#detectedReview,#rawOcrWrap{display:block!important}
+</style>
+</head>
+<body>
+<input id="screenshots" type="file" multiple>
+<button id="analyzeScreenshots" type="button">Analyze screenshots</button>
+<div id="ocrProgressWrap"><progress id="ocrProgress" max="100"></progress><span id="ocrStatus"></span></div>
+
+<input id="detectedUsername">
+<div id="usernameReviewWarning" hidden></div>
+<div id="saveTargetName"></div>
+<div id="scanCompleteness"></div>
+
+<form id="detectedReview">
+  <button id="saveDetectedButton" type="submit">Save</button>
+  <button id="teachSelectedExamples" type="button">Teach</button>
+  <input id="learningConsent" type="checkbox">
+  <button id="exportLearning" type="button">Export</button>
+  <button id="clearLearning" type="button">Clear</button>
+  <div id="learningStatus"></div>
+  <table><tbody id="detectedBody"></tbody></table>
+</form>
+
+<details id="rawOcrWrap" open><pre id="rawOcrText"></pre></details>
+
+<script>
+window.CLASH_KNOWN_PLAYERS = [];
+window.CLASH_CARDS = [
+  ["Elixir","Barbarian"],["Elixir","Archer"],["Elixir","Giant"],["Elixir","Goblin"],
+  ["Elixir","Wall Breaker"],["Elixir","Balloon"],["Elixir","Wizard"],["Elixir","Healer"],
+  ["Elixir","Dragon"],["Elixir","P.E.K.K.A"],["Elixir","Baby Dragon"],["Elixir","Miner"],
+  ["Elixir","Electro Dragon"],["Elixir","Yeti"],["Elixir","Dragon Rider"],["Elixir","Electro Titan"],
+  ["Elixir","Root Rider"],["Elixir","Thrower"],["Elixir","Meteor Golem"],
+  ["Dark Elixir","Minion"],["Dark Elixir","Hog Rider"],["Dark Elixir","Valkyrie"],
+  ["Dark Elixir","Golem"],["Dark Elixir","Witch"],["Dark Elixir","Lava Hound"],
+  ["Dark Elixir","Bowler"],["Dark Elixir","Ice Golem"],["Dark Elixir","Headhunter"],
+  ["Dark Elixir","Apprentice Warden"],["Dark Elixir","Druid"],["Dark Elixir","Furnace"],
+  ["Dark Elixir","Ruin Witch"],
+  ["Builder Base","Raged Barbarian"],["Builder Base","Sneaky Archer"],["Builder Base","Boxer Giant"],
+  ["Builder Base","Beta Minion"],["Builder Base","Bomber"],["Builder Base","Baby Dragon"],
+  ["Builder Base","Cannon Cart"],["Builder Base","Night Witch"],["Builder Base","Drop Ship"],
+  ["Builder Base","Power P.E.K.K.A"],["Builder Base","Hog Glider"],
+  ["Super","Super Barbarian"],["Super","Super Archer"],["Super","Super Giant"],
+  ["Super","Sneaky Goblin"],["Super","Super Wall Breaker"],["Super","Rocket Balloon"],
+  ["Super","Super Wizard"],["Super","Super Dragon"],["Super","Inferno Dragon"],
+  ["Super","Super Miner"],["Super","Super Yeti"],["Super","Super Minion"],
+  ["Super","Super Hog Rider"],["Super","Super Valkyrie"],["Super","Super Witch"],
+  ["Super","Ice Hound"],["Super","Super Bowler"]
+].map(([category,name],i)=>({id:i+1,category,name}));
+</script>
+<script src="js/card-scanner.js"></script>
+</body>
+</html>

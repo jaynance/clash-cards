@@ -1,0 +1,11 @@
+{
+  "name": "clash-cards-scanner-regression",
+  "private": true,
+  "scripts": {
+    "test:scanner": "playwright test",
+    "test:scanner:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}
