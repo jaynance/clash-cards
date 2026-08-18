@@ -1,6 +1,6 @@
-const SCANNER_VERSION = "V8.29";
-const SCANNER_BUILD = "7+6 Repair + Username Guard";
-const SCANNER_BUILD_ID = "v8.29-7plus6-username-guard";
+const SCANNER_VERSION = "V8.31";
+const SCANNER_BUILD = "Focused Username OCR";
+const SCANNER_BUILD_ID = "v8.31-focused-username-ocr";
 
 function scannerVersionLine() {
   return `SCANNER | version=${SCANNER_VERSION} | build="${SCANNER_BUILD}" | id=${SCANNER_BUILD_ID}`;
@@ -352,7 +352,7 @@ async function run() {
         usernameNeedsManualReview=suspiciousNewName;
 
         debug.push(
-          `USERNAME | raw=${JSON.stringify(usernameResult.raw)} | ocr=${JSON.stringify(usernameResult.cleaned)} | detected=${JSON.stringify(detectedUsername)} | confidence=${usernameResult.confidence.toFixed(1)} | source=${usernameResult.source} | variant=${usernameResult.variant} | resolution=${usernameResolution.reason}${usernameResolution.distance === null ? "" : ` | distance=${usernameResolution.distance}`} | guard=${suspiciousNewName?"manual-review":"accepted"}`
+          `USERNAME | raw=${JSON.stringify(usernameResult.raw)} | ocr=${JSON.stringify(usernameResult.cleaned)} | detected=${JSON.stringify(detectedUsername)} | confidence=${usernameResult.confidence.toFixed(1)} | source=${usernameResult.source} | variant=${usernameResult.variant} | resolution=${usernameResolution.reason}${usernameResolution.distance === null ? "" : ` | distance=${usernameResolution.distance}`} | guard=${suspiciousNewName?"manual-review":"accepted"} | candidates=${JSON.stringify(usernameResult.candidates||[])}`
         );
 
         const usernameField = document.querySelector('input[name="display_name"]');
@@ -2279,7 +2279,36 @@ async function readUsername(worker,img){
     });
   }
 
-  // Fallback search regions for unusual skins/aspect ratios.
+  // V8.31 focused username bands.
+  //
+  // Desktop/emulator captures often include window chrome and side controls,
+  // which makes the old broad top-left crop contain the level shield, XP bar,
+  // foliage and builder timers. The actual player name is a narrow horizontal
+  // strip. Try several conservative bands first; the older broad region stays
+  // as a last resort for unusual devices.
+  crops.push({
+    name:"name-band-a",
+    x:img.naturalWidth*.064,
+    y:img.naturalHeight*.041,
+    w:img.naturalWidth*.082,
+    h:img.naturalHeight*.035
+  });
+  crops.push({
+    name:"name-band-b",
+    x:img.naturalWidth*.058,
+    y:img.naturalHeight*.032,
+    w:img.naturalWidth*.105,
+    h:img.naturalHeight*.046
+  });
+  crops.push({
+    name:"name-band-c",
+    x:img.naturalWidth*.050,
+    y:img.naturalHeight*.025,
+    w:img.naturalWidth*.125,
+    h:img.naturalHeight*.055
+  });
+
+  // Fallback search region for unusual skins/aspect ratios.
   crops.push({
     name:"top-left",
     x:img.naturalWidth*.045,
@@ -2288,7 +2317,7 @@ async function readUsername(worker,img){
     h:img.naturalHeight*.075
   });
 
-  const variants=["raw","gray","bright-text","threshold"];
+  const variants=["raw","gray","bright-text","threshold","shadow-text"];
 
   for(const crop of crops){
     for(const variant of variants){
@@ -2308,13 +2337,21 @@ async function readUsername(worker,img){
   }
 
   candidates.sort((a,b)=>{
-    const ap=usernamePlausibility(a.cleaned,a.confidence);
-    const bp=usernamePlausibility(b.cleaned,b.confidence);
+    const ap=usernamePlausibility(a.cleaned,a.confidence,a.source);
+    const bp=usernamePlausibility(b.cleaned,b.confidence,b.source);
     if(bp!==ap) return bp-ap;
     return b.confidence-a.confidence;
   });
 
-  return candidates[0];
+  const winner=candidates[0];
+  winner.candidates=candidates.slice(0,6).map(c=>({
+    source:c.source,
+    variant:c.variant,
+    cleaned:c.cleaned,
+    confidence:c.confidence,
+    score:usernamePlausibility(c.cleaned,c.confidence,c.source)
+  }));
+  return winner;
 }
 
 function findLevelShield(img){
@@ -2419,6 +2456,11 @@ function cropUsername(img,box,variant){
     if(variant==="gray") v=lum;
     else if(variant==="bright-text") v=(lum>95&&sat<.55)?255:0;
     else if(variant==="threshold") v=lum>118?255:0;
+    else if(variant==="shadow-text"){
+      // Clash usernames are light gray/white with a dark outline. Keep neutral
+      // mid/high-luminance pixels and suppress colorful village/background pixels.
+      v=(lum>72 && sat<.42)?255:0;
+    }
 
     id.data[i]=id.data[i+1]=id.data[i+2]=v;
   }
@@ -2442,15 +2484,26 @@ function cleanUsername(value){
   return s.slice(0,80);
 }
 
-function usernamePlausibility(value,confidence){
+function usernamePlausibility(value,confidence,source=""){
   const s=String(value||"");
   let score=confidence;
   if(s.length>=3) score+=10;
   if(s.length>=5) score+=15;
   if(/[A-Za-z]/.test(s)) score+=12;
-  if(/^[A-Za-z0-9._'#-]{4,20}$/.test(s)) score+=25;
-  if((s.match(/ /g)||[]).length>=2) score-=20;
-  if(s.length>22) score-=20;
+
+  // A Clash player name is normally one compact token. Strongly reward that
+  // form; it prevents noisy multi-word OCR from beating a slightly lower
+  // confidence but much cleaner focused-band result.
+  if(/^[A-Za-z0-9._'#-]{4,20}$/.test(s)) score+=38;
+  if(!/\s/.test(s) && s.length>=4 && s.length<=20) score+=14;
+
+  if(source.startsWith("name-band-")) score+=12;
+  if(source==="shield" || source==="shield-wide") score+=7;
+
+  const spaces=(s.match(/ /g)||[]).length;
+  if(spaces===1) score-=8;
+  if(spaces>=2) score-=35;
+  if(s.length>22) score-=25;
   return score;
 }
 
