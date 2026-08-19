@@ -60,7 +60,21 @@ if (empty($_SESSION['is_admin'])) {
             .error{background:#fff2f2;border:1px solid #dfa5a5;padding:10px;border-radius:8px}
             .clan-banner{margin:-24px -24px 22px;padding:12px 18px;background:#2e2927;color:#fff;border-bottom:3px solid #b88a3b;text-align:center;font-weight:800;letter-spacing:.04em}
             .clan-banner .clan-label{opacity:.72;font-size:.72rem;text-transform:uppercase;letter-spacing:.12em;margin-right:8px}
-        </style>
+        
+            button,input[type="submit"],input[type="button"]{
+                -webkit-appearance:none;
+                appearance:none;
+                font:inherit;
+                line-height:1.2;
+                opacity:1;
+                color:#fff!important;
+                -webkit-text-fill-color:#fff;
+                background:#315da8;
+                border:0;
+                border-radius:7px;
+                cursor:pointer;
+            }
+</style>
     </head>
     <body>
     <div class="box">
@@ -252,12 +266,44 @@ function h(string $value): string
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Clash Cards — Admin</title>
-<!-- Production build: V8.38.2 Admin Required Column Cleanup -->
+<!-- Production build: V8.39.1 iOS Control Normalization -->
 <style>
 :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#202124;background:#f6f7f9}
 *{box-sizing:border-box}body{margin:0}.shell{max-width:1240px;margin:0 auto;padding:24px}.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}.topbar h1{margin:0}.topbar a{color:#315da8;text-decoration:none}.notice{padding:11px 14px;border-radius:9px;margin:12px 0}.notice-ok{background:#eef9f0;border:1px solid #a6cfad}.notice-error{background:#fff2f2;border:1px solid #dfa5a5}.warning{background:#fff8e5;border:1px solid #dfc981;color:#5e4a00;padding:11px 14px;border-radius:9px;margin-bottom:18px}.trade-status{display:inline-block;font-size:.78rem;font-weight:800;padding:4px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em}.trade-status-completed{background:#e8f6eb;color:#216b2a}.layout{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:20px}.panel{background:white;border:1px solid #ddd;border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}.players{max-height:76vh;overflow:auto}.player-row{display:block;padding:11px 12px;border:1px solid #e2e2e2;border-radius:9px;margin:8px 0;color:inherit;text-decoration:none}.player-row:hover{background:#f7f9ff;border-color:#b9c8e5}.player-row.active{background:#eef4ff;border-color:#7596d2}.player-name{font-weight:750}.player-meta{color:#666;font-size:.84rem;margin-top:4px}.summary{display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px;margin:12px 0 18px}.metric{background:#f6f7f9;border-radius:9px;padding:10px;text-align:center}.metric strong{display:block;font-size:1.15rem}.metric span{display:block;color:#666;font-size:.8rem;margin-top:2px}.category{margin-top:20px}.category h3{margin:0 0 7px}table{border-collapse:collapse;width:100%;background:white}th,td{border-bottom:1px solid #e6e6e6;padding:8px;text-align:left}th{background:#fafafa;position:sticky;top:0}td.num{text-align:right;font-variant-numeric:tabular-nums}.need{font-weight:700;color:#a33}.extra{font-weight:700;color:#18733a}.delete-zone{margin-top:26px;padding:16px;border:1px solid #d9a2a2;background:#fff7f7;border-radius:10px}.delete-zone h3{color:#9a2525;margin-top:0}.delete-form{display:flex;gap:9px;align-items:end;flex-wrap:wrap}.delete-form label{display:grid;gap:5px;flex:1;min-width:220px}.delete-form input{padding:8px;border:1px solid #bbb;border-radius:7px}.danger{background:#b3261e;color:white;border:0;border-radius:7px;padding:9px 13px;font-weight:700;cursor:pointer}.empty{color:#666}@media(max-width:850px){.layout{grid-template-columns:1fr}.players{max-height:none}.summary{grid-template-columns:repeat(3,1fr)}}
 .admin-tabs{display:flex;gap:7px;border-bottom:1px solid #d9dce3;margin:4px 0 20px}.admin-tab{display:inline-block;padding:10px 14px;text-decoration:none;color:#555;font-weight:750;border-bottom:3px solid transparent}.admin-tab.active{background:#f5f8ff;border-bottom-color:#315da8;color:#244f91}.optimizer-summary{display:grid;grid-template-columns:repeat(6,minmax(100px,1fr));gap:10px;margin:16px 0}.optimizer-card{background:white;border:1px solid #ddd;border-radius:11px;padding:12px;text-align:center}.optimizer-card strong{font-size:1.35rem;display:block}.optimizer-card span{color:#666;font-size:.82rem}.progress{height:12px;background:#e7e9ee;border-radius:999px;overflow:hidden;margin:8px 0 3px}.progress-fill{height:100%;background:#4777bd}.plan-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.handoff{border:1px solid #ddd;border-radius:11px;background:white;padding:13px;cursor:pointer;transition:border-color .15s,box-shadow .15s,transform .15s}.handoff:hover{border-color:#8eabd4;box-shadow:0 2px 8px rgba(49,93,168,.12);transform:translateY(-1px)}.handoff.selected{border-color:#315da8;box-shadow:0 0 0 2px rgba(49,93,168,.13)}.handoff-reciprocal{border-color:#9ab7df}.reciprocal-badge{display:inline-block;margin-left:7px;padding:2px 7px;border-radius:999px;background:#e8f1ff;color:#244f91;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em;vertical-align:middle}.graph-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0}.graph-controls select{padding:7px 9px;border:1px solid #bbb;border-radius:7px;background:white}.graph-legend{font-size:.84rem;color:#666}.graph-edge.dim,.graph-node.dim,.graph-edge-label.dim,.graph-node-label.dim{opacity:.12}.graph-edge.focus{stroke-width:4}.graph-node.focus{stroke-width:4}#playerTradeGraph{width:100%;min-width:720px;height:460px}.handoff h3{margin:0 0 8px}.transfer-line{padding:6px 0;border-top:1px solid #eee}.transfer-line:first-of-type{border-top:0}.optimizer-note{background:#f5f8ff;border:1px solid #c8d6ed;padding:12px 14px;border-radius:9px}.scarce-high{font-weight:800;color:#a33}.graph-wrap{background:white;border:1px solid #ddd;border-radius:12px;padding:12px;margin:14px 0;overflow:auto}#tradeGraph{width:100%;min-width:720px;height:520px}.graph-edge{stroke:#9aa7bd;stroke-width:2}.graph-edge-label{font-size:11px;fill:#555}.graph-node{fill:#f5f8ff;stroke:#315da8;stroke-width:2;cursor:pointer}.graph-edge{cursor:pointer}.graph-edge-label{cursor:pointer}.graph-label-bg{fill:white;stroke:#d7dce5;stroke-width:1;opacity:.96}.relationship-detail{background:white;border:1px solid #b9c9e2;border-radius:12px;padding:16px;margin:16px 0}.relationship-detail.empty-detail{color:#666;border-style:dashed}.relationship-detail h3{margin:0 0 8px}.relationship-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.relationship-side{background:#f8f9fb;border-radius:9px;padding:11px}.proposal-options{margin-top:14px;border-top:1px solid #e4e7ec;padding-top:12px}.proposal-option{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:9px 0;border-top:1px solid #eee}.proposal-option:first-of-type{border-top:0}.proposal-text{flex:1;min-width:300px}.proposal-button{background:#315da8;color:white;border:0;border-radius:7px;padding:8px 12px;font-weight:700;cursor:pointer}.one-way-note{background:#fff8e5;border:1px solid #dfc981;border-radius:8px;padding:10px 12px;margin-top:12px}.relationship-jump{font-size:.85rem;color:#315da8;cursor:pointer;text-decoration:underline}.graph-instruction{font-size:.84rem;color:#666;margin-top:5px}@media(max-width:700px){.relationship-detail-grid{grid-template-columns:1fr}}.graph-node-label{font-size:12px;font-weight:700;text-anchor:middle;dominant-baseline:middle}.excluded{font-size:.88rem;color:#666}.optimizer-table th{position:static}@media(max-width:950px){.optimizer-summary{grid-template-columns:repeat(3,1fr)}.plan-grid{grid-template-columns:1fr}}@media(max-width:600px){.optimizer-summary{grid-template-columns:repeat(2,1fr)}}
 .clan-banner-main{margin:-8px -8px 18px;padding:12px 18px;background:#2e2927;color:#fff;border-bottom:3px solid #b88a3b;text-align:center;font-weight:800;letter-spacing:.04em;font-size:1.08rem}.clan-banner-main .clan-label{opacity:.72;font-size:.72rem;text-transform:uppercase;letter-spacing:.12em;margin-right:8px}
+
+button,
+input[type="submit"],
+input[type="button"]{
+    -webkit-appearance:none;
+    appearance:none;
+    font:inherit;
+    line-height:1.2;
+    opacity:1;
+    color:#222!important;
+    -webkit-text-fill-color:#222;
+    background:#fff;
+    border:1px solid #aaa;
+    border-radius:7px;
+    cursor:pointer;
+}
+button.primary,
+button.proposal-button,
+input[type="submit"].primary,
+input[type="button"].primary{
+    background:#315da8;
+    border-color:#315da8;
+    color:#fff!important;
+    -webkit-text-fill-color:#fff;
+    font-weight:700;
+}
+button:disabled,
+input[type="submit"]:disabled,
+input[type="button"]:disabled{
+    opacity:.55;
+    cursor:not-allowed;
+}
 </style>
 </head>
 <body>
@@ -773,7 +819,7 @@ function h(string $value): string
             <thead>
             <tr>
                 <th>Card</th>
-
+                
                 <th>Owned</th>
                 <th>Need</th>
                 <th>Extra</th>

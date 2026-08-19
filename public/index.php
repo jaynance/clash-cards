@@ -182,21 +182,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $playerId && isset($_POST['save_det
         $quantities[(int)$cardId] = max(0, (int)$ownedQty);
     }
 
-    $scannedDisplayName = trim((string)($_POST['scanned_display_name'] ?? ''));
-    $scannedDisplayName = preg_replace('/^\d+\s+/', '', $scannedDisplayName) ?? $scannedDisplayName;
-    $scannedDisplayName = preg_replace('/\s+[_|~\-]+\s*[A-Za-z0-9]*\s*$/', '', $scannedDisplayName) ?? $scannedDisplayName;
-    $scannedDisplayName = trim($scannedDisplayName);
-
-    if ($scannedDisplayName === '') {
-        $message = 'Detected inventory was not saved because the scanned player name is blank.';
-    } elseif ($quantities) {
-        $scannedPlayerId = $inventoryService->getOrCreatePlayer($scannedDisplayName);
-        $inventoryService->saveInventory($scannedPlayerId, $quantities);
-
-        // Redirect prevents an accidental browser refresh from resubmitting the
-        // inventory and opens the post-scan summary for the scanned player.
+    // V8.39: logged-in identity is authoritative. Player-name OCR is only a
+    // client-side warning and can never save inventory into another player.
+    if ($quantities) {
+        $inventoryService->saveInventory($playerId, $quantities);
         header(
-            'Location: index.php?view_player_id=' . $scannedPlayerId .
+            'Location: index.php?view_player_id=' . $playerId .
             '&saved=scan&tab=cards'
         );
         exit;
@@ -242,6 +233,92 @@ if (isset($_GET['trade'])) {
 }
 
 $inventory = $viewPlayerId ? $inventoryService->getInventory($viewPlayerId) : [];
+
+// V8.40: keep My Cards in the exact order used by the in-game Clash of Cards
+// screens and by the scanner's EVENT_ORDER. Category is part of the key because
+// Baby Dragon exists in both Elixir and Builder Base.
+$gameCardOrder = [
+    ['Elixir', 'Barbarian'],
+    ['Elixir', 'Archer'],
+    ['Elixir', 'Giant'],
+    ['Elixir', 'Goblin'],
+    ['Elixir', 'Wall Breaker'],
+    ['Elixir', 'Balloon'],
+    ['Elixir', 'Wizard'],
+    ['Elixir', 'Healer'],
+    ['Elixir', 'Dragon'],
+    ['Elixir', 'P.E.K.K.A'],
+    ['Elixir', 'Baby Dragon'],
+    ['Elixir', 'Miner'],
+    ['Elixir', 'Electro Dragon'],
+    ['Elixir', 'Yeti'],
+    ['Elixir', 'Dragon Rider'],
+    ['Elixir', 'Electro Titan'],
+    ['Elixir', 'Root Rider'],
+    ['Elixir', 'Thrower'],
+    ['Elixir', 'Meteor Golem'],
+
+    ['Dark Elixir', 'Minion'],
+    ['Dark Elixir', 'Hog Rider'],
+    ['Dark Elixir', 'Valkyrie'],
+    ['Dark Elixir', 'Golem'],
+    ['Dark Elixir', 'Witch'],
+    ['Dark Elixir', 'Lava Hound'],
+    ['Dark Elixir', 'Bowler'],
+    ['Dark Elixir', 'Ice Golem'],
+    ['Dark Elixir', 'Headhunter'],
+    ['Dark Elixir', 'Apprentice Warden'],
+    ['Dark Elixir', 'Druid'],
+    ['Dark Elixir', 'Furnace'],
+    ['Dark Elixir', 'Ruin Witch'],
+
+    ['Builder Base', 'Raged Barbarian'],
+    ['Builder Base', 'Sneaky Archer'],
+    ['Builder Base', 'Boxer Giant'],
+    ['Builder Base', 'Beta Minion'],
+    ['Builder Base', 'Bomber'],
+    ['Builder Base', 'Baby Dragon'],
+    ['Builder Base', 'Cannon Cart'],
+    ['Builder Base', 'Night Witch'],
+    ['Builder Base', 'Drop Ship'],
+    ['Builder Base', 'Power P.E.K.K.A'],
+    ['Builder Base', 'Hog Glider'],
+
+    ['Super', 'Super Barbarian'],
+    ['Super', 'Super Archer'],
+    ['Super', 'Super Giant'],
+    ['Super', 'Sneaky Goblin'],
+    ['Super', 'Super Wall Breaker'],
+    ['Super', 'Rocket Balloon'],
+    ['Super', 'Super Wizard'],
+    ['Super', 'Super Dragon'],
+    ['Super', 'Inferno Dragon'],
+    ['Super', 'Super Miner'],
+    ['Super', 'Super Yeti'],
+    ['Super', 'Super Minion'],
+    ['Super', 'Super Hog Rider'],
+    ['Super', 'Super Valkyrie'],
+    ['Super', 'Super Witch'],
+    ['Super', 'Ice Hound'],
+    ['Super', 'Super Bowler'],
+];
+
+$gameCardRank = [];
+foreach ($gameCardOrder as $rank => [$category, $name]) {
+    $gameCardRank[$category . '|' . $name] = $rank;
+}
+
+usort($inventory, static function (array $a, array $b) use ($gameCardRank): int {
+    $aKey = (string)$a['category'] . '|' . (string)$a['name'];
+    $bKey = (string)$b['category'] . '|' . (string)$b['name'];
+
+    $aRank = $gameCardRank[$aKey] ?? PHP_INT_MAX;
+    $bRank = $gameCardRank[$bKey] ?? PHP_INT_MAX;
+
+    return ($aRank <=> $bRank)
+        ?: strcasecmp((string)$a['category'], (string)$b['category'])
+        ?: strcasecmp((string)$a['name'], (string)$b['name']);
+});
 
 // Trades always use the logged-in player's perspective, even when My Cards is
 // temporarily showing a scanned player's inventory.
@@ -316,7 +393,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.38.1 iOS Login Button Fix -->
+<!-- Production build: V8.40 Game-Order My Cards -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -411,6 +488,67 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 }
 .player-login-button:active{transform:translateY(1px)}
 
+.scan-player-target{margin:8px 0;padding:10px 12px;border:1px solid #c8d6ed;border-radius:8px;background:#f5f8ff}
+.username-review-warning{margin:10px 0;padding:11px 13px;border:1px solid #d59b29;border-radius:8px;background:#fff8e5;color:#664d00}
+.username-review-warning strong{display:block;margin-bottom:4px}
+.username-review-warning ul{margin:7px 0 7px 20px}
+
+/* V8.39.1: normalize actionable form controls on iOS/WebKit.
+   Chrome on iPhone uses WebKit too, so relying on native button text rendering
+   can produce blank-looking controls. Explicit text fill fixes all buttons,
+   not just the login screen. */
+button,
+input[type="submit"],
+input[type="button"]{
+    -webkit-appearance:none;
+    appearance:none;
+    font:inherit;
+    line-height:1.2;
+    opacity:1;
+    color:#222 !important;
+    -webkit-text-fill-color:#222;
+    background:#fff;
+    border:1px solid #aaa;
+    border-radius:8px;
+    cursor:pointer;
+}
+button.primary,
+input[type="submit"].primary,
+input[type="button"].primary{
+    background:#315da8;
+    border-color:#315da8;
+    color:#fff !important;
+    -webkit-text-fill-color:#fff;
+    font-weight:700;
+}
+button:disabled,
+input[type="submit"]:disabled,
+input[type="button"]:disabled{
+    opacity:.55;
+    cursor:not-allowed;
+}
+/* Preserve intentionally link-like tab controls while still forcing visible text. */
+button.tab-button{
+    background:transparent;
+    border:0;
+    border-bottom:3px solid transparent;
+    color:#555 !important;
+    -webkit-text-fill-color:#555;
+}
+button.tab-button.active{
+    color:#244f91 !important;
+    -webkit-text-fill-color:#244f91;
+    border-bottom-color:#315da8;
+    background:#f5f8ff;
+}
+/* Logout is a secondary pill rather than a primary action. */
+button.logout-player-button{
+    background:#fff;
+    border-color:#b9c2cf;
+    color:#444 !important;
+    -webkit-text-fill-color:#444;
+}
+
 </style>
 </head>
 <body data-logged-in-player="<?= h($_SESSION['display_name'] ?? '') ?>">
@@ -470,28 +608,17 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
     </p>
     <p class="privacy-note">
         OCR runs in your browser. The screenshots are not posted to this PHP server;
-        only the card quantities you approve are submitted when you click Save inventory for scanned player.
+        only the card quantities you approve are submitted when you save your inventory.
     </p>
 
-    <label for="detectedUsername"><strong>Scanned player</strong></label><br>
-    <input
-        id="detectedUsername"
-        name="scanned_display_name"
-        form="detectedReview"
-        type="text"
-        maxlength="80"
-        value="<?= h($_SESSION['display_name'] ?? '') ?>"
-        placeholder="Player whose screenshots are being scanned"
-        autocomplete="off"
-        style="margin:6px 0 6px;padding:8px;min-width:260px"
-        required
-    >
-    <p id="usernameReviewWarning" class="username-review-warning" hidden>
-        <strong>Please verify the player name.</strong>
-        OCR confidence was too low to safely create a new player. Correct the name above before saving.
-    </p>
+    <div class="scan-player-target">
+        Inventory will be saved to:
+        <strong><?= h((string)($_SESSION['display_name'] ?? '')) ?></strong>
+    </div>
+    <div id="usernameReviewWarning" class="username-review-warning" hidden></div>
     <p class="privacy-note" style="margin-top:0">
-        This is the player whose inventory will be updated. Correct it if OCR gets the name wrong.
+        Player-name OCR is only a safety check. A mismatch warns you but does not block saving.
+        Comparison ignores capitalization and periods.
     </p>
 
     <input
@@ -1123,7 +1250,7 @@ window.CLASH_CARDS = <?= json_encode(
 </script>
 <!-- Tesseract is used ONLY for the small player-name crop, not card detection. -->
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
-<script src="js/card-scanner.js?v=8.33"></script>
+<script src="js/card-scanner.js?v=8.39"></script>
 
 <?php endif; ?>
 </body>

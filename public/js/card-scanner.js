@@ -1,6 +1,6 @@
-const SCANNER_VERSION = "V8.33";
-const SCANNER_BUILD = "Badge OCR First + Extended Search";
-const SCANNER_BUILD_ID = "v8.33-badge-ocr-first";
+const SCANNER_VERSION = "V8.39";
+const SCANNER_BUILD = "Login Name Warning";
+const SCANNER_BUILD_ID = "v8.39-login-name-warning";
 
 function scannerVersionLine() {
   return `SCANNER | version=${SCANNER_VERSION} | build="${SCANNER_BUILD}" | id=${SCANNER_BUILD_ID}`;
@@ -139,13 +139,6 @@ syncSaveTargetName();
 }
 if (review) {
   review.addEventListener("submit", (event) => {
-    if(usernameNeedsManualReview){
-      event.preventDefault();
-      alert("Please verify or correct the scanned player name before saving.");
-      detectedUsernameField?.focus();
-      return;
-    }
-
     if (saveDetectedButton?.disabled) {
       event.preventDefault();
       alert("There is no scanned inventory to save yet.");
@@ -223,6 +216,10 @@ async function run() {
       saveDetectedButton.dataset.scanComplete="0";
       saveDetectedButton.dataset.partialScan="0";
       saveDetectedButton.dataset.hasReviewableScan="0";
+      if(usernameReviewWarning){
+        usernameReviewWarning.hidden=true;
+        usernameReviewWarning.innerHTML="";
+      }
     }
     if(scanCompleteness){
       scanCompleteness.textContent="Analyzing screenshots…";
@@ -344,64 +341,62 @@ async function run() {
 
     if(saveDetectedButton){
       saveDetectedButton.dataset.hasReviewableScan=reviewableScan?"1":"0";
-      saveDetectedButton.disabled=!reviewableScan || usernameNeedsManualReview;
+      saveDetectedButton.disabled=!reviewableScan;
       saveDetectedButton.dataset.scanComplete=completeScan?"1":"0";
       saveDetectedButton.dataset.partialScan=completeScan?"0":"1";
     }
 
-    // Username is independent of card-page recognition. Use any screenshot,
-    // locate the blue level shield, then OCR the region immediately to its right.
-    let detectedUsername = "";
-    const usernameSource = pages.get(0) || allImages[0];
+    // V8.39: username OCR is a warning only. Check every uploaded file
+    // against the logged-in player. Matching ignores case and periods.
+    const loggedInPlayerName=String(document.body?.dataset?.loggedInPlayer||"").trim();
+    const normalizedLoggedIn=normalizeUsernameForLoginCheck(loggedInPlayerName);
+    const usernameChecks=[];
 
-    if (usernameSource && worker) {
-      try {
-        setStatus("Reading player name…", 28);
-        const usernameResult = await readUsername(worker, usernameSource);
-        const usernameResolution = reconcileUsernameWithKnownPlayers(usernameResult.cleaned);
-        detectedUsername = usernameResolution.name;
+    if(worker && allImages.length){
+      setStatus("Checking player names…",28);
 
-        const matchedKnownPlayer=[
-          "database-exact-normalized",
-          "database-ocr-confusion",
-          "database-fuzzy",
-          "database-fuzzy-long-suffix"
-        ].includes(usernameResolution.reason);
+      for(let i=0;i<allImages.length;i++){
+        try{
+          const usernameResult=await readUsernameForWarning(worker,allImages[i]);
+          const detected=normalizeDetectedUsername(usernameResult.cleaned);
+          const normalizedDetected=normalizeUsernameForLoginCheck(detected);
+          const matches=
+            normalizedLoggedIn!=="" &&
+            normalizedDetected!=="" &&
+            normalizedLoggedIn===normalizedDetected;
 
-        const suspiciousNewName=
-          !matchedKnownPlayer &&
-          (
-            usernameResult.confidence<50 ||
-            usernameMatchKey(detectedUsername).length<4
+          usernameChecks.push({
+            file:files[i]?.name||`Screenshot ${i+1}`,
+            detected,
+            confidence:usernameResult.confidence,
+            matches
+          });
+
+          debug.push(
+            `USERNAME_CHECK | file=${JSON.stringify(files[i]?.name||`Screenshot ${i+1}`)} | loggedIn=${JSON.stringify(loggedInPlayerName)} | ocr=${JSON.stringify(detected)} | normalizedLoggedIn=${JSON.stringify(normalizedLoggedIn)} | normalizedOcr=${JSON.stringify(normalizedDetected)} | match=${matches?"yes":"no"} | confidence=${usernameResult.confidence.toFixed(1)} | source=${usernameResult.source} | variant=${usernameResult.variant}`
           );
-
-        usernameNeedsManualReview=suspiciousNewName;
-
-        debug.push(
-          `USERNAME | raw=${JSON.stringify(usernameResult.raw)} | ocr=${JSON.stringify(usernameResult.cleaned)} | detected=${JSON.stringify(detectedUsername)} | confidence=${usernameResult.confidence.toFixed(1)} | source=${usernameResult.source} | variant=${usernameResult.variant} | resolution=${usernameResolution.reason}${usernameResolution.distance === null ? "" : ` | distance=${usernameResolution.distance}`} | guard=${suspiciousNewName?"manual-review":"accepted"} | candidates=${JSON.stringify(usernameResult.candidates||[])}`
-        );
-
-        const usernameField = document.querySelector('input[name="display_name"]');
-        if (usernameField && detectedUsername) usernameField.value = detectedUsername;
-
-        const detectedNameField = document.getElementById("detectedUsername");
-        if (detectedNameField && detectedUsername) {
-          detectedNameField.value = normalizeDetectedUsername(detectedUsername);
-          syncSaveTargetName();
-          detectedNameField.classList.toggle("username-review-required",usernameNeedsManualReview);
-          if(usernameReviewWarning) usernameReviewWarning.hidden=!usernameNeedsManualReview;
-          if(usernameNeedsManualReview && saveDetectedButton) saveDetectedButton.disabled=true;
+        }catch(e){
+          usernameChecks.push({
+            file:files[i]?.name||`Screenshot ${i+1}`,
+            detected:"",
+            confidence:0,
+            matches:null
+          });
+          debug.push(
+            `USERNAME_CHECK | file=${JSON.stringify(files[i]?.name||`Screenshot ${i+1}`)} | result=unreadable | error=${JSON.stringify(e?.message||String(e))}`
+          );
         }
-      } catch (e) {
-        debug.push(`USERNAME | OCR failed: ${e?.message || String(e)}`);
       }
     }
 
+    renderUsernameLoginWarning(usernameChecks,loggedInPlayerName);
+
+    // Partial-scan fallback must also use the logged-in player, not OCR.
     let previousInventory={found:false,display_name:null,quantities:{}};
-    if(detectedUsername){
-      previousInventory=await fetchPreviousInventory(detectedUsername);
+    if(loggedInPlayerName){
+      previousInventory=await fetchPreviousInventory(loggedInPlayerName);
       debug.push(
-        `PREVIOUS_INVENTORY | player=${JSON.stringify(detectedUsername)} | found=${previousInventory.found} | savedRows=${Object.keys(previousInventory.quantities||{}).length}`
+        `PREVIOUS_INVENTORY | player=${JSON.stringify(loggedInPlayerName)} | found=${previousInventory.found} | savedRows=${Object.keys(previousInventory.quantities||{}).length}`
       );
     }
 
@@ -2318,6 +2313,101 @@ function preprocessBadgeForOcr(baseCanvas,variant){
 }
 
 /* ---------------- Username: shield-anchored OCR ---------------- */
+
+function normalizeUsernameForLoginCheck(value){
+  // Requested release behavior: ignore capitalization and periods.
+  // Spaces are retained because they may be meaningful in a player name.
+  return String(value||"")
+    .trim()
+    .toLowerCase()
+    .replace(/\./g,"")
+    .replace(/\s+/g," ");
+}
+
+function renderUsernameLoginWarning(checks,loggedInName){
+  if(!usernameReviewWarning) return;
+
+  const readable=checks.filter(c=>c.detected);
+  const mismatches=readable.filter(c=>c.matches===false);
+
+  if(!mismatches.length){
+    usernameReviewWarning.hidden=true;
+    usernameReviewWarning.innerHTML="";
+    return;
+  }
+
+  const esc=value=>String(value).replace(/[&<>"']/g,ch=>({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'
+  })[ch]);
+
+  const items=mismatches.map(c=>
+    `<li><strong>${esc(c.file)}</strong> — OCR saw “${esc(c.detected)}”</li>`
+  ).join("");
+
+  usernameReviewWarning.innerHTML=
+    `<strong>Player-name warning</strong>`+
+    `You are logged in as “${esc(loggedInName)}”, but one or more screenshots appear to show a different player.`+
+    `<ul>${items}</ul>`+
+    `<div>You can still save. The inventory will be saved to your logged-in player.</div>`;
+  usernameReviewWarning.hidden=false;
+}
+
+async function readUsernameForWarning(worker,img){
+  await worker.setParameters({
+    tessedit_char_whitelist:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 _.'#-",
+    tessedit_pageseg_mode:"7"
+  });
+
+  const crops=[
+    {
+      name:"name-band-a",
+      x:img.naturalWidth*.064,
+      y:img.naturalHeight*.041,
+      w:img.naturalWidth*.082,
+      h:img.naturalHeight*.035
+    },
+    {
+      name:"name-band-b",
+      x:img.naturalWidth*.058,
+      y:img.naturalHeight*.032,
+      w:img.naturalWidth*.105,
+      h:img.naturalHeight*.046
+    },
+    {
+      name:"name-band-c",
+      x:img.naturalWidth*.050,
+      y:img.naturalHeight*.025,
+      w:img.naturalWidth*.125,
+      h:img.naturalHeight*.055
+    }
+  ];
+
+  const candidates=[];
+  for(const crop of crops){
+    for(const variant of ["gray","shadow-text"]){
+      const canvas=cropUsername(img,crop,variant);
+      const r=await worker.recognize(canvas);
+      const raw=(r.data.text||"").trim();
+      const cleaned=cleanUsername(raw);
+      const confidence=Number(r.data.confidence||0);
+      if(cleaned){
+        candidates.push({raw,cleaned,confidence,variant,source:crop.name});
+      }
+    }
+  }
+
+  if(!candidates.length){
+    return {raw:"",cleaned:"",confidence:0,variant:"none",source:"none"};
+  }
+
+  candidates.sort((a,b)=>{
+    const ap=usernamePlausibility(a.cleaned,a.confidence,a.source);
+    const bp=usernamePlausibility(b.cleaned,b.confidence,b.source);
+    return (bp-ap)||(b.confidence-a.confidence);
+  });
+
+  return candidates[0];
+}
 
 async function readUsername(worker,img){
   const shield=findLevelShield(img);
