@@ -773,7 +773,7 @@ function h(string $value): string
             <thead>
             <tr>
                 <th>Card</th>
-                
+
                 <th>Owned</th>
                 <th>Need</th>
                 <th>Extra</th>
