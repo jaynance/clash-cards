@@ -78,6 +78,25 @@ Copy:
 
 Fill in the database values.
 
+### Clan name / site banner
+
+V8.38 adds a clan banner to the player site and Admin pages. Set the displayed
+clan name in `config.php`:
+
+    'app' => [
+        'clan_name' => 'Whiskey Morning',
+        'debug' => false,
+        'error_log' => __DIR__ . '/storage/logs/php-error.log',
+    ],
+
+Change `Whiskey Morning` to the exact clan name you want displayed.
+
+If `clan_name` is an empty string, the banner is hidden.
+
+Because `config.php` is intentionally excluded from Git/FTP deployments, changing
+the clan name on the hosted site is a production configuration change and will
+not be overwritten by normal application deployments.
+
 Generate the separate Admin password hash on your Mac:
 
     php -r "echo password_hash('YOUR-STRONG-ADMIN-PASSWORD', PASSWORD_DEFAULT), PHP_EOL;"

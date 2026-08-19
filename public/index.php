@@ -9,6 +9,8 @@ if (!file_exists($configPath)) {
 
 $config = require $configPath;
 
+$clanName = trim((string)($config['app']['clan_name'] ?? 'Whiskey Morning'));
+
 require dirname(__DIR__) . '/src/Production.php';
 Production::configure($config['app'] ?? []);
 
@@ -314,7 +316,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.37.1 How-To Tab Fix -->
+<!-- Production build: V8.38 Clan Branding -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -384,9 +386,14 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 .howto-mini{font-size:.9rem;color:#666}
 @media(max-width:800px){.howto-grid{grid-template-columns:1fr}}
 
+.clan-banner{margin:-8px -8px 18px;padding:12px 18px;background:#2e2927;color:#fff;border-bottom:3px solid #b88a3b;text-align:center;font-weight:800;letter-spacing:.04em;font-size:1.08rem}.clan-banner .clan-label{opacity:.72;font-size:.72rem;text-transform:uppercase;letter-spacing:.12em;margin-right:8px}
 </style>
 </head>
 <body data-logged-in-player="<?= h($_SESSION['display_name'] ?? '') ?>">
+<?php if ($clanName !== ''): ?>
+<div class="clan-banner"><span class="clan-label">Clan</span><?= h($clanName) ?></div>
+<?php endif; ?>
+
 
 <?php if (!$playerId): ?>
 <h1>Clash Cards Matchmaker</h1>
