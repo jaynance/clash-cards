@@ -314,7 +314,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.37 User How-To -->
+<!-- Production build: V8.37.1 How-To Tab Fix -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -1072,7 +1072,7 @@ window.CLASH_KNOWN_PLAYERS = <?= json_encode(
 </script>
 <script>
 (function(){
- const allowed=new Set(['scan','cards','trades']); const serverDefault=<?= json_encode($activeTab) ?>;
+ const allowed=new Set(['scan','cards','trades','help']); const serverDefault=<?= json_encode($activeTab) ?>;
  function requested(){const p=new URLSearchParams(location.search),t=p.get('tab');return allowed.has(t)?t:serverDefault;}
  function activate(t,push=true){if(!allowed.has(t))t='scan';document.querySelectorAll('[data-tab-panel]').forEach(x=>{const a=x.dataset.tabPanel===t;x.classList.toggle('active',a);x.hidden=!a;});document.querySelectorAll('.tab-button[data-tab]').forEach(x=>{const a=x.dataset.tab===t;x.classList.toggle('active',a);x.setAttribute('aria-selected',a?'true':'false');});if(push){const u=new URL(location.href);u.searchParams.set('tab',t);history.pushState({tab:t},'',u);}}
  document.querySelectorAll('.tab-button[data-tab]').forEach(b=>b.addEventListener('click',()=>activate(b.dataset.tab)));window.addEventListener('popstate',()=>activate(requested(),false));activate(requested(),false);
