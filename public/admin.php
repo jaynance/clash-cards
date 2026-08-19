@@ -266,7 +266,7 @@ function h(string $value): string
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Clash Cards — Admin</title>
-<!-- Production build: V8.39.1 iOS Control Normalization -->
+<!-- Production build: V8.41 All Possible Trades -->
 <style>
 :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#202124;background:#f6f7f9}
 *{box-sizing:border-box}body{margin:0}.shell{max-width:1240px;margin:0 auto;padding:24px}.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}.topbar h1{margin:0}.topbar a{color:#315da8;text-decoration:none}.notice{padding:11px 14px;border-radius:9px;margin:12px 0}.notice-ok{background:#eef9f0;border:1px solid #a6cfad}.notice-error{background:#fff2f2;border:1px solid #dfa5a5}.warning{background:#fff8e5;border:1px solid #dfc981;color:#5e4a00;padding:11px 14px;border-radius:9px;margin-bottom:18px}.trade-status{display:inline-block;font-size:.78rem;font-weight:800;padding:4px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em}.trade-status-completed{background:#e8f6eb;color:#216b2a}.layout{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:20px}.panel{background:white;border:1px solid #ddd;border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}.players{max-height:76vh;overflow:auto}.player-row{display:block;padding:11px 12px;border:1px solid #e2e2e2;border-radius:9px;margin:8px 0;color:inherit;text-decoration:none}.player-row:hover{background:#f7f9ff;border-color:#b9c8e5}.player-row.active{background:#eef4ff;border-color:#7596d2}.player-name{font-weight:750}.player-meta{color:#666;font-size:.84rem;margin-top:4px}.summary{display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px;margin:12px 0 18px}.metric{background:#f6f7f9;border-radius:9px;padding:10px;text-align:center}.metric strong{display:block;font-size:1.15rem}.metric span{display:block;color:#666;font-size:.8rem;margin-top:2px}.category{margin-top:20px}.category h3{margin:0 0 7px}table{border-collapse:collapse;width:100%;background:white}th,td{border-bottom:1px solid #e6e6e6;padding:8px;text-align:left}th{background:#fafafa;position:sticky;top:0}td.num{text-align:right;font-variant-numeric:tabular-nums}.need{font-weight:700;color:#a33}.extra{font-weight:700;color:#18733a}.delete-zone{margin-top:26px;padding:16px;border:1px solid #d9a2a2;background:#fff7f7;border-radius:10px}.delete-zone h3{color:#9a2525;margin-top:0}.delete-form{display:flex;gap:9px;align-items:end;flex-wrap:wrap}.delete-form label{display:grid;gap:5px;flex:1;min-width:220px}.delete-form input{padding:8px;border:1px solid #bbb;border-radius:7px}.danger{background:#b3261e;color:white;border:0;border-radius:7px;padding:9px 13px;font-weight:700;cursor:pointer}.empty{color:#666}@media(max-width:850px){.layout{grid-template-columns:1fr}.players{max-height:none}.summary{grid-template-columns:repeat(3,1fr)}}
@@ -327,7 +327,7 @@ input[type="button"]:disabled{
 
 <nav class="admin-tabs">
     <a class="admin-tab <?= $adminSection === 'players' ? 'active' : '' ?>" href="admin.php?section=players">Players</a>
-    <a class="admin-tab <?= $adminSection === 'optimizer' ? 'active' : '' ?>" href="admin.php?section=optimizer">Optimized Trading</a>
+    <a class="admin-tab <?= $adminSection === 'optimizer' ? 'active' : '' ?>" href="admin.php?section=optimizer">Possible Trades</a>
 </nav>
 
 <?php if ($message): ?><div class="notice notice-ok"><?= h($message) ?></div><?php endif; ?>
@@ -335,11 +335,12 @@ input[type="button"]:disabled{
 
 <?php if ($adminSection === 'optimizer' && $optimization): ?>
 <section>
-    <h2>Global Trade Optimizer</h2>
+    <h2>All Possible Trades</h2>
     <p class="optimizer-note">
-        This plan changes <strong>nothing</strong> in the database. V8.35 counts only executable in-game trades:
-        both players must exchange cards from the <strong>same card group</strong>. Cross-group and one-way handoffs
-        are excluded from fulfillment.
+        This view changes <strong>nothing</strong> in the database and no longer allocates cards through a global optimizer.
+        It shows <strong>every currently possible reciprocal trade</strong>: each player must have an extra the other needs,
+        and both cards must be in the <strong>same card group</strong>. The same extra may therefore appear in more than one
+        possible relationship until a real trade is completed.
     </p>
 
     <div class="optimizer-summary">
@@ -349,23 +350,23 @@ input[type="button"]:disabled{
         </div>
         <div class="optimizer-card">
             <strong><?= (int)$optimization['players_helped'] ?>/<?= (int)$optimization['players_with_need'] ?></strong>
-            <span>players helped</span>
+            <span>players with possible trades</span>
         </div>
         <div class="optimizer-card">
             <strong><?= (int)$optimization['fulfilled_units'] ?></strong>
-            <span>need units fulfilled by valid trades</span>
+            <span>need units reachable by possible trades</span>
         </div>
         <div class="optimizer-card">
             <strong><?= number_format((float)$optimization['fulfillment_pct'], 1) ?>%</strong>
-            <span>need fulfillment</span>
+            <span>need units currently reachable</span>
         </div>
         <div class="optimizer-card">
             <strong><?= (int)$optimization['reciprocal_relationship_count'] ?>/<?= (int)$optimization['relationship_count'] ?></strong>
-            <span>reciprocal / total handoffs</span>
+            <span>trade relationships</span>
         </div>
         <div class="optimizer-card">
             <strong><?= (int)$optimization['unmet_units'] ?></strong>
-            <span>units still unmet</span>
+            <span>units with no current trade path</span>
         </div>
     </div>
 
@@ -373,7 +374,7 @@ input[type="button"]:disabled{
         <div class="progress-fill" style="width:<?= min(100, max(0, (float)$optimization['fulfillment_pct'])) ?>%"></div>
     </div>
     <div class="player-meta">
-        <?= (int)$optimization['fulfilled_units'] ?> of <?= (int)$optimization['total_need_units'] ?> needed card units are fulfilled through executable same-group trades.
+        <?= (int)$optimization['fulfilled_units'] ?> of <?= (int)$optimization['total_need_units'] ?> needed card units currently have at least one executable same-group trade path.
     </div>
 
     <?php if ((int)$optimization['excluded_player_count'] > 0): ?>
@@ -387,9 +388,9 @@ input[type="button"]:disabled{
     </p>
     <?php endif; ?>
 
-    <h2>Recommended handoffs</h2>
+    <h2>Possible trade relationships</h2>
     <?php if (!$optimization['relationships']): ?>
-        <p class="empty">No useful card transfers are currently available.</p>
+        <p class="empty">No reciprocal same-group trades are currently available.</p>
     <?php else: ?>
     <div class="plan-grid">
         <?php foreach ($optimization['relationships'] as $relationship): ?>
@@ -398,7 +399,7 @@ input[type="button"]:disabled{
             data-relationship-key="<?= h((string)$relationship['pair_key']) ?>"
             tabindex="0"
             role="button"
-            aria-label="Inspect optimized relationship between <?= h((string)$relationship['player_a_name']) ?> and <?= h((string)$relationship['player_b_name']) ?>"
+            aria-label="Inspect possible trade relationship between <?= h((string)$relationship['player_a_name']) ?> and <?= h((string)$relationship['player_b_name']) ?>"
         >
             <h3>
                 <?= h((string)$relationship['player_a_name']) ?>
@@ -419,32 +420,32 @@ input[type="button"]:disabled{
     </div>
     <?php endif; ?>
 
-    <h2>Global network</h2>
+    <h2>Global possible-trade network</h2>
     <p class="player-meta">
         The full optimized network. Each line is a recommended player-to-player handoff relationship;
         the number is total card units moving between that pair.
     </p>
     <p class="graph-instruction"><strong>Tip:</strong> click a player to open their per-player graph, or click a line to inspect that relationship.</p>
     <div class="graph-wrap">
-        <svg id="tradeGraph" viewBox="0 0 1000 520" role="img" aria-label="Global optimized player trade network"></svg>
+        <svg id="tradeGraph" viewBox="0 0 1000 520" role="img" aria-label="Global possible player trade network"></svg>
     </div>
 
     <h2>Per-player network</h2>
     <div class="graph-controls">
         <label for="graphPlayer"><strong>Player:</strong></label>
         <select id="graphPlayer"></select>
-        <span class="graph-legend">Shows only this player's optimized handoffs, with card details on each relationship.</span>
+        <span class="graph-legend">Shows all of this player's currently possible trade partners, with card details on each relationship.</span>
     </div>
     <div class="graph-wrap">
-        <svg id="playerTradeGraph" viewBox="0 0 1000 460" role="img" aria-label="Selected player optimized trade network"></svg>
+        <svg id="playerTradeGraph" viewBox="0 0 1000 460" role="img" aria-label="Selected player possible trade network"></svg>
     </div>
 
     <h2>Relationship detail</h2>
     <div id="relationshipDetail" class="relationship-detail empty-detail">
-        Click a recommended handoff or a graph relationship to inspect the cards and create a reciprocal trade proposal.
+        Click a possible trade or a graph relationship to inspect the cards and create a reciprocal trade proposal.
     </div>
 
-    <h2>Scarcity after optimization</h2>
+    <h2>Needs without a current trade path</h2>
     <?php
         $scarceRows = array_values(array_filter(
             $optimization['scarcity'],
@@ -461,8 +462,8 @@ input[type="button"]:disabled{
             <th>Category</th>
             <th>Needed</th>
             <th>Extras available</th>
-            <th>Fulfilled by valid trades</th>
-            <th>Still unmet</th>
+            <th>Reachable by possible trades</th>
+            <th>No current path</th>
         </tr>
         </thead>
         <tbody>

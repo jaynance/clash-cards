@@ -393,7 +393,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.40 Game-Order My Cards -->
+<!-- Production build: V8.41 All Possible Trades -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -760,10 +760,10 @@ button.logout-player-button{
 </section>
 <section id="tab-trades" class="tab-panel" data-tab-panel="trades">
 <p class="tab-intro">
-    Your recommended trades come from the same clan-wide optimizer used by Admin. V8.35 only recommends executable reciprocal trades where both cards are in the same Clash card group.
+    All currently possible reciprocal trades are shown here. Cards are never reserved by a clan-wide optimizer; if two players can exchange cards from the same Clash card group, the option appears for both players.
 </p>
 
-<h2>Optimized trades<?php if ($tradePlayer): ?> — <?= h((string)$tradePlayer['display_name']) ?><?php endif; ?></h2>
+<h2>Possible trades<?php if ($tradePlayer): ?> — <?= h((string)$tradePlayer['display_name']) ?><?php endif; ?></h2>
 
 <?php if ($viewPlayerId !== $playerId): ?>
 <div class="player-opt-note">
@@ -775,11 +775,11 @@ button.logout-player-button{
 
 <?php if (!$optimizerEligible): ?>
 <div class="player-opt-warning">
-    This player is not currently eligible for optimized trading because their saved inventory is incomplete.
+    This player is not currently eligible for trade matching because their saved inventory is incomplete.
     Scan/save all card pages first.
 </div>
 <?php elseif (!$optimizedRelationships): ?>
-<p>No useful optimized transfers are currently available for this player.</p>
+<p>No reciprocal same-group trades are currently available for this player.</p>
 <?php else: ?>
 <?php
     $optimizedGiveUnits = 0;
@@ -803,21 +803,21 @@ button.logout-player-button{
 
 <div class="player-opt-summary">
     <div class="player-opt-metric"><strong><?= count($optimizedRelationships) ?></strong><span>people to coordinate with</span></div>
-    <div class="player-opt-metric"><strong><?= $optimizedGiveUnits ?></strong><span>cards to give</span></div>
-    <div class="player-opt-metric"><strong><?= $optimizedReceiveUnits ?></strong><span>cards to receive</span></div>
-    <div class="player-opt-metric"><strong><?= $optimizedReciprocalCount ?></strong><span>reciprocal relationships</span></div>
+    <div class="player-opt-metric"><strong><?= $optimizedGiveUnits ?></strong><span>possible cards to give</span></div>
+    <div class="player-opt-metric"><strong><?= $optimizedReceiveUnits ?></strong><span>possible cards to receive</span></div>
+    <div class="player-opt-metric"><strong><?= $optimizedReciprocalCount ?></strong><span>trade partners</span></div>
 </div>
 
 <div class="player-opt-note">
-    This is your slice of the <strong>group-constrained clan plan</strong>. Every recommendation below has a reciprocal card in the same group, so it can be created as a real in-game trade.
+    Nothing is allocated or reserved. Every relationship below is a currently possible reciprocal trade in the same card group. Multiple players may see the same extra as an option; whoever completes a trade first changes what is possible next.
 </div>
 
-<h3>My optimized network</h3>
+<h3>My possible-trade network</h3>
 <div class="player-network-wrap">
-    <svg id="playerOptimizedGraph" viewBox="0 0 1000 440" role="img" aria-label="Optimized trade network for logged-in player"></svg>
+    <svg id="playerOptimizedGraph" viewBox="0 0 1000 440" role="img" aria-label="Possible trade network for logged-in player"></svg>
 </div>
 
-<h3>Recommended handoffs</h3>
+<h3>Possible trade partners</h3>
 <div class="optimized-relations">
 <?php foreach ($optimizedRelationships as $relationship): ?>
 <?php
@@ -842,7 +842,7 @@ button.logout-player-button{
 
 <h3>Trade detail</h3>
 <div id="playerOptimizerDetail" class="optimizer-detail empty">
-    Click a person, graph edge, or recommended handoff to see the exact optimized exchange.
+    Click a person, graph edge, or trade partner to see every currently possible same-group exchange.
 </div>
 <?php endif; ?>
 
