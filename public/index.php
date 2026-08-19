@@ -26,6 +26,13 @@ $globalTradeOptimizer = new GlobalTradeOptimizer($pdo);
 
 $message = null;
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['logout_player'])) {
+    unset($_SESSION['player_id'], $_SESSION['display_name']);
+    session_regenerate_id(true);
+    header('Location: index.php');
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['display_name'])) {
     $_SESSION['player_id'] = $inventoryService->getOrCreatePlayer($_POST['display_name']);
     $_SESSION['display_name'] = trim($_POST['display_name']);
@@ -307,7 +314,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.35 Group-Constrained Trades -->
+<!-- Production build: V8.37 User How-To -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -338,7 +345,7 @@ button:disabled{opacity:.55;cursor:not-allowed}.primary{font-weight:700}.save-ro
 #detectedReview{margin-top:22px}.confidence{font-size:.85rem;font-weight:700}.confidence-high{color:#246b2d}.confidence-medium{color:#7a5a00}.confidence-low{color:#9b2c2c}.confidence-previous{color:#315da8}.confidence-manual{color:#9a5b00}.scan-fallback-row{background:#fffaf0}.scan-fallback-row input{border-color:#d7a94b}.partial-note{margin:8px 0;color:#6f5100}
 details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;background:#f4f4f6;border:1px solid #ddd;border-radius:8px;padding:12px;max-height:360px;overflow:auto}
 @media(max-width:700px){.summary-grid{grid-template-columns:1fr}th,td{padding:9px 8px}}
-.app-header{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:14px}.app-header h1{margin:0}.player-chip{background:#f3f6fb;border:1px solid #ccd7e8;border-radius:999px;padding:8px 13px;white-space:nowrap}.tabs{display:flex;gap:6px;border-bottom:1px solid #d9dce3;margin:18px 0 20px;overflow-x:auto}.tab-button{appearance:none;border:0;border-bottom:3px solid transparent;background:transparent;padding:11px 16px;margin:0;color:#555;font:inherit;font-weight:750;cursor:pointer;white-space:nowrap}.tab-button:hover{background:#f6f7f9;color:#222}.tab-button.active{color:#244f91;border-bottom-color:#315da8;background:#f5f8ff}.tab-panel{display:none}.tab-panel.active{display:block}.tab-intro{color:#666;margin-top:-8px;margin-bottom:18px}.admin-tab-link{margin-left:auto;text-decoration:none;color:#555;font-weight:750;padding:11px 16px;white-space:nowrap}.admin-tab-link:hover{background:#f6f7f9;color:#222}@media(max-width:700px){.player-chip{white-space:normal}.tabs{gap:0}.tab-button,.admin-tab-link{padding:10px 12px}}
+.app-header{display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:14px}.app-header h1{margin:0}.player-session{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.player-chip{background:#f3f6fb;border:1px solid #ccd7e8;border-radius:999px;padding:8px 13px;white-space:nowrap}.logout-player-form{margin:0}.logout-player-button{background:white;border:1px solid #b9c2cf;color:#444;padding:7px 11px;border-radius:999px;font-weight:700;cursor:pointer}.logout-player-button:hover{background:#f3f4f6;border-color:#8c98a8}.tabs{display:flex;gap:6px;border-bottom:1px solid #d9dce3;margin:18px 0 20px;overflow-x:auto}.tab-button{appearance:none;border:0;border-bottom:3px solid transparent;background:transparent;padding:11px 16px;margin:0;color:#555;font:inherit;font-weight:750;cursor:pointer;white-space:nowrap}.tab-button:hover{background:#f6f7f9;color:#222}.tab-button.active{color:#244f91;border-bottom-color:#315da8;background:#f5f8ff}.tab-panel{display:none}.tab-panel.active{display:block}.tab-intro{color:#666;margin-top:-8px;margin-bottom:18px}.admin-tab-link{margin-left:auto;text-decoration:none;color:#555;font-weight:750;padding:11px 16px;white-space:nowrap}.admin-tab-link:hover{background:#f6f7f9;color:#222}@media(max-width:700px){.player-chip{white-space:normal}.tabs{gap:0}.tab-button,.admin-tab-link{padding:10px 12px}}
 
 .player-opt-summary{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:10px;margin:14px 0 18px}.player-opt-metric{background:#f6f8fb;border:1px solid #dde3ec;border-radius:10px;padding:11px;text-align:center}.player-opt-metric strong{display:block;font-size:1.25rem}.player-opt-metric span{font-size:.8rem;color:#666}.player-opt-note{padding:11px 13px;background:#f5f8ff;border:1px solid #c8d6ed;border-radius:9px;margin:12px 0}.player-opt-warning{padding:11px 13px;background:#fff8e5;border:1px solid #dfc981;border-radius:9px;margin:12px 0}.player-network-wrap{background:#fff;border:1px solid #ddd;border-radius:12px;padding:10px;overflow:auto;margin:14px 0}.player-network-wrap svg{width:100%;min-width:680px;height:440px}.pgraph-edge{stroke:#9aa7bd;stroke-width:3;cursor:pointer}.pgraph-node{fill:#f5f8ff;stroke:#315da8;stroke-width:2;cursor:pointer}.pgraph-node-center{fill:#eaf2ff;stroke-width:4}.pgraph-node-label{font-size:12px;font-weight:700;text-anchor:middle;dominant-baseline:middle;pointer-events:none}.pgraph-label-bg{fill:white;stroke:#d7dce5;stroke-width:1;opacity:.97}.pgraph-edge-label{font-size:11px;fill:#444;text-anchor:middle;cursor:pointer}.optimized-relations{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0}.optimized-relation{border:1px solid #ddd;border-radius:11px;padding:14px;background:white;cursor:pointer}.optimized-relation:hover,.optimized-relation.selected{border-color:#315da8;box-shadow:0 0 0 2px rgba(49,93,168,.10)}.optimized-relation h3{margin:0 0 8px}.reciprocal-badge{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;background:#e8f1ff;color:#244f91;font-size:.68rem;text-transform:uppercase;letter-spacing:.04em}.optimized-transfer{padding:6px 0;border-top:1px solid #eee}.optimized-transfer:first-of-type{border-top:0}.optimizer-detail{border:1px solid #b9c9e2;border-radius:12px;padding:15px;background:white;margin:16px 0}.optimizer-detail.empty{border-style:dashed;color:#666}.optimizer-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.optimizer-side{background:#f8f9fb;border-radius:9px;padding:10px}.optimized-proposal{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid #eee}.optimized-proposal-text{flex:1;min-width:280px}.one-way-explain{background:#fff8e5;border:1px solid #dfc981;border-radius:8px;padding:10px;margin-top:12px}@media(max-width:850px){.player-opt-summary{grid-template-columns:repeat(2,1fr)}.optimized-relations{grid-template-columns:1fr}.optimizer-detail-grid{grid-template-columns:1fr}}
 
@@ -363,6 +370,20 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 .trade-builder-actions button:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:800px){.trade-builder-grid{grid-template-columns:1fr}.trade-arrow{transform:rotate(90deg);padding:0;text-align:center}}
 
+
+.howto-hero{background:#f5f8ff;border:1px solid #c7d6ee;border-radius:12px;padding:16px 18px;margin-bottom:16px}
+.howto-hero h2{margin-top:0}
+.howto-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.howto-card{background:#fff;border:1px solid #ddd;border-radius:11px;padding:15px}
+.howto-card h3{margin:0 0 8px}
+.howto-step{display:flex;gap:12px;align-items:flex-start}
+.howto-number{flex:0 0 32px;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#315da8;color:white;font-weight:800}
+.howto-card p{margin:6px 0;color:#444}
+.howto-note{background:#fff8e5;border:1px solid #dfc981;border-radius:9px;padding:11px 13px;margin-top:14px}
+.howto-good{background:#f3fbf4;border:1px solid #9bc5a1;border-radius:9px;padding:11px 13px;margin-top:14px}
+.howto-mini{font-size:.9rem;color:#666}
+@media(max-width:800px){.howto-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body data-logged-in-player="<?= h($_SESSION['display_name'] ?? '') ?>">
@@ -378,12 +399,19 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 
 <header class="app-header">
     <h1>Clash Cards Matchmaker</h1>
-    <div class="player-chip">Playing as: <strong><?= h((string)($_SESSION['display_name'] ?? '')) ?></strong></div>
+    <div class="player-session">
+        <div class="player-chip">Playing as: <strong><?= h((string)($_SESSION['display_name'] ?? '')) ?></strong></div>
+        <form method="post" class="logout-player-form">
+            <input type="hidden" name="logout_player" value="1">
+            <button type="submit" class="logout-player-button">Log out / change player</button>
+        </form>
+    </div>
 </header>
 <nav class="tabs" aria-label="Player workflow">
     <button type="button" class="tab-button" data-tab="scan">📷 Scan Cards</button>
     <button type="button" class="tab-button" data-tab="cards">🃏 My Cards</button>
     <button type="button" class="tab-button" data-tab="trades">🤝 Trades</button>
+    <button type="button" class="tab-button" data-tab="help">❓ How To</button>
     <a class="admin-tab-link" href="admin.php">🔧 Admin</a>
 </nav>
 
@@ -778,6 +806,120 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 <?php endif; ?>
 
 </section>
+
+<section id="tab-help" class="tab-panel" data-tab-panel="help">
+    <div class="howto-hero">
+        <h2>How to use Clash Cards Matchmaker</h2>
+        <p>
+            The app compares saved card inventories and recommends only trades that can actually be
+            made in Clash of Clans. Both sides of a recommended trade are always from the same card group.
+        </p>
+    </div>
+
+    <div class="howto-grid">
+        <article class="howto-card">
+            <div class="howto-step">
+                <div class="howto-number">1</div>
+                <div>
+                    <h3>Choose your player</h3>
+                    <p>Select or enter your Clash player name when you open the site.</p>
+                    <p class="howto-mini">Use <strong>Log out / change player</strong> at the top whenever you need to switch accounts.</p>
+                </div>
+            </div>
+        </article>
+
+        <article class="howto-card">
+            <div class="howto-step">
+                <div class="howto-number">2</div>
+                <div>
+                    <h3>Take five screenshots</h3>
+                    <p>Open the Clash of Cards event and capture the five card pages so all 60 card slots are represented.</p>
+                    <p class="howto-mini">Keep the full card grid visible. The screenshots can be selected together in any order.</p>
+                </div>
+            </div>
+        </article>
+
+        <article class="howto-card">
+            <div class="howto-step">
+                <div class="howto-number">3</div>
+                <div>
+                    <h3>Scan the screenshots</h3>
+                    <p>Open <strong>Scan Cards</strong>, select the screenshots, and click <strong>Analyze screenshots</strong>.</p>
+                    <p class="howto-mini">OCR and image analysis run in your browser. The screenshots themselves are not saved to the server.</p>
+                </div>
+            </div>
+        </article>
+
+        <article class="howto-card">
+            <div class="howto-step">
+                <div class="howto-number">4</div>
+                <div>
+                    <h3>Review before saving</h3>
+                    <p>Check the detected player name and any quantities marked low-confidence or manual.</p>
+                    <p class="howto-mini">If the scanner is unsure, correct the quantity before saving. Your correction becomes the inventory value used by matchmaking.</p>
+                </div>
+            </div>
+        </article>
+
+        <article class="howto-card">
+            <div class="howto-step">
+                <div class="howto-number">5</div>
+                <div>
+                    <h3>Save your inventory</h3>
+                    <p>Save the reviewed scan. <strong>My Cards</strong> then shows the inventory currently stored for that player.</p>
+                    <p class="howto-mini">For the optimizer to use a player, the database must contain all 60 card rows for that inventory.</p>
+                </div>
+            </div>
+        </article>
+
+        <article class="howto-card">
+            <div class="howto-step">
+                <div class="howto-number">6</div>
+                <div>
+                    <h3>Open Trades</h3>
+                    <p>The <strong>Trades</strong> tab shows your part of the clan-wide optimized trading plan.</p>
+                    <p class="howto-mini">The graph and recommended handoffs only show players involved in executable same-group trades.</p>
+                </div>
+            </div>
+        </article>
+
+        <article class="howto-card">
+            <div class="howto-step">
+                <div class="howto-number">7</div>
+                <div>
+                    <h3>Create a trade offer</h3>
+                    <p>Choose one card you will <strong>offer</strong> and one card you want to <strong>receive</strong>.</p>
+                    <p class="howto-mini">The game requires both cards to be in the same group: Elixir, Dark Elixir, Builder Base, or Super.</p>
+                </div>
+            </div>
+        </article>
+
+        <article class="howto-card">
+            <div class="howto-step">
+                <div class="howto-number">8</div>
+                <div>
+                    <h3>Complete the trade</h3>
+                    <p>After the trade happens in Clash of Clans, mark it completed in the app so both saved inventories are updated.</p>
+                    <p class="howto-mini">If the trade does not happen, cancel the proposal instead.</p>
+                </div>
+            </div>
+        </article>
+    </div>
+
+    <div class="howto-good">
+        <strong>What “optimized” means:</strong>
+        the app looks across all eligible players and tries to create the greatest useful set of
+        reciprocal trades. A recommendation is only counted when both players can exchange cards
+        from the same Clash card group.
+    </div>
+
+    <div class="howto-note">
+        <strong>Important:</strong>
+        the app does not make trades inside Clash of Clans for you. It tells you which player to
+        coordinate with and which card to offer/request. You still create the actual trade in the game.
+    </div>
+</section>
+
 <?php if ($optimizerEligible && $optimizedRelationships): ?>
 <script>
 (function(){

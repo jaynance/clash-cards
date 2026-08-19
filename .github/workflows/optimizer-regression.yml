@@ -1,0 +1,35 @@
+name: Optimizer regression tests
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'src/GlobalTradeOptimizer.php'
+      - 'tests/optimizer-regression.php'
+      - '.github/workflows/optimizer-regression.yml'
+  pull_request:
+    paths:
+      - 'src/GlobalTradeOptimizer.php'
+      - 'tests/optimizer-regression.php'
+      - '.github/workflows/optimizer-regression.yml'
+
+jobs:
+  optimizer-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo_sqlite
+          coverage: none
+
+      - name: PHP syntax check
+        run: php -l src/GlobalTradeOptimizer.php
+
+      - name: Verify same-group trade invariant
+        run: php tests/optimizer-regression.php
