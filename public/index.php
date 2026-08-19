@@ -316,7 +316,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.38 Clan Branding -->
+<!-- Production build: V8.38.1 iOS Login Button Fix -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -387,6 +387,30 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 @media(max-width:800px){.howto-grid{grid-template-columns:1fr}}
 
 .clan-banner{margin:-8px -8px 18px;padding:12px 18px;background:#2e2927;color:#fff;border-bottom:3px solid #b88a3b;text-align:center;font-weight:800;letter-spacing:.04em;font-size:1.08rem}.clan-banner .clan-label{opacity:.72;font-size:.72rem;text-transform:uppercase;letter-spacing:.12em;margin-right:8px}
+
+.player-login-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.player-login-form input{font-size:16px;min-height:42px}
+.player-login-button{
+    -webkit-appearance:none;
+    appearance:none;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:42px;
+    padding:9px 15px;
+    border:0;
+    border-radius:8px;
+    background:#315da8;
+    color:#fff !important;
+    -webkit-text-fill-color:#fff;
+    font:inherit;
+    font-weight:700;
+    line-height:1.2;
+    opacity:1;
+    cursor:pointer;
+}
+.player-login-button:active{transform:translateY(1px)}
+
 </style>
 </head>
 <body data-logged-in-player="<?= h($_SESSION['display_name'] ?? '') ?>">
@@ -398,9 +422,9 @@ details{margin-top:18px}pre{white-space:pre-wrap;word-break:break-word;backgroun
 <?php if (!$playerId): ?>
 <h1>Clash Cards Matchmaker</h1>
 <h2>Choose your player name</h2>
-<form method="post">
+<form method="post" class="player-login-form">
     <input name="display_name" maxlength="80" required>
-    <button type="submit">Continue</button>
+    <button type="submit" class="player-login-button">Continue</button>
 </form>
 <?php else: ?>
 
