@@ -3,186 +3,97 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/src/GlobalTradeOptimizer.php';
 
-function failTest(string $message): never
-{
-    fwrite(STDERR, "FAIL: {$message}\n");
+function failTest(string $message): never {
+    fwrite(STDERR,"FAIL: {$message}\n");
     exit(1);
 }
-
-function assertTrue(bool $condition, string $message): void
-{
-    if (!$condition) {
-        failTest($message);
-    }
+function ok(bool $condition,string $message): void {
+    if(!$condition) failTest($message);
 }
 
-$pdo = new PDO('sqlite::memory:');
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+$pdo=new PDO('sqlite::memory:');
+$pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
+$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
 
 $pdo->exec('
-    CREATE TABLE players (
-        id INTEGER PRIMARY KEY,
-        display_name TEXT NOT NULL
-    );
-
-    CREATE TABLE cards (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        category TEXT NOT NULL,
-        required_qty INTEGER NOT NULL
-    );
-
-    CREATE TABLE player_cards (
-        player_id INTEGER NOT NULL,
-        card_id INTEGER NOT NULL,
-        owned_qty INTEGER NOT NULL,
-        PRIMARY KEY (player_id, card_id)
-    );
+CREATE TABLE players(id INTEGER PRIMARY KEY,display_name TEXT NOT NULL);
+CREATE TABLE cards(id INTEGER PRIMARY KEY,name TEXT NOT NULL,category TEXT NOT NULL,required_qty INTEGER NOT NULL);
+CREATE TABLE player_cards(player_id INTEGER NOT NULL,card_id INTEGER NOT NULL,owned_qty INTEGER NOT NULL,PRIMARY KEY(player_id,card_id));
 ');
 
-$players = [
-    1 => 'CrossA',
-    2 => 'CrossB',
-    3 => 'ValidA',
-    4 => 'ValidB',
-];
+foreach([1=>'Requester',2=>'Donor',3=>'WrongGroup'] as $id=>$name){
+    $s=$pdo->prepare('INSERT INTO players(id,display_name) VALUES(?,?)');
+    $s->execute([$id,$name]);
+}
 
-foreach ($players as $id => $name) {
-    $stmt = $pdo->prepare('INSERT INTO players (id, display_name) VALUES (?, ?)');
-    $stmt->execute([$id, $name]);
+// Two Elixir cards and two Super cards.
+$cards=[
+    [1,'Barbarian','Elixir',1],
+    [2,'Archer','Elixir',1],
+    [3,'Super A','Super',1],
+    [4,'Super B','Super',1],
+];
+foreach($cards as $row){
+    $s=$pdo->prepare('INSERT INTO cards(id,name,category,required_qty) VALUES(?,?,?,?)');
+    $s->execute($row);
 }
 
 /*
- * Four cards, two groups.
- *
- * Cards 1/2 = Dark Elixir
- * Cards 3/4 = Super
- *
- * CrossA/CrossB have a tempting CROSS-GROUP exchange only:
- *   CrossA can give Dark One to CrossB
- *   CrossB can give Super One to CrossA
- * This MUST NOT become a trade.
- *
- * ValidA/ValidB have a legal Dark Elixir exchange:
- *   ValidA gives Dark One
- *   ValidB gives Dark Two
- * This MUST become a trade.
- */
-$cards = [
-    [1, 'Dark One',  'Dark Elixir', 1],
-    [2, 'Dark Two',  'Dark Elixir', 1],
-    [3, 'Super One', 'Super',       1],
-    [4, 'Super Two', 'Super',       1],
-];
+Requester needs Barbarian and has extra Archer.
+Donor has extra Barbarian, but DOES NOT need Archer.
+=> This MUST be offered to Requester.
 
-foreach ($cards as $card) {
-    $stmt = $pdo->prepare(
-        'INSERT INTO cards (id, name, category, required_qty) VALUES (?, ?, ?, ?)'
-    );
-    $stmt->execute($card);
+WrongGroup has extra Barbarian too, but Requester would still use Archer (Elixir),
+so it is also a valid donor. We separately verify no cross-group offer can appear.
+*/
+$inventory=[
+    1=>[1=>0,2=>2,3=>1,4=>1],
+    2=>[1=>2,2=>1,3=>1,4=>1],
+    3=>[1=>2,2=>1,3=>2,4=>0],
+];
+foreach($inventory as $pid=>$rows){
+    foreach($rows as $cid=>$qty){
+        $s=$pdo->prepare('INSERT INTO player_cards(player_id,card_id,owned_qty) VALUES(?,?,?)');
+        $s->execute([$pid,$cid,$qty]);
+    }
 }
 
-$inventory = [
-    // CrossA: extra Dark One, needs Super One.
-    1 => [1 => 2, 2 => 1, 3 => 0, 4 => 1],
+$result=(new GlobalTradeOptimizer($pdo))->optimize();
 
-    // CrossB: needs Dark One, extra Super One.
-    2 => [1 => 0, 2 => 1, 3 => 2, 4 => 1],
+ok(
+    ($result['optimizer_mode']??'')==='directed-requester-benefit',
+    'V8.42 directed mode must be active'
+);
 
-    // ValidA: extra Dark One, needs Dark Two.
-    3 => [1 => 2, 2 => 0, 3 => 1, 4 => 1],
+$requesterOpps=array_values(array_filter(
+    $result['opportunities']??[],
+    static fn(array $o):bool=>(int)$o['requester_id']===1
+));
 
-    // ValidB: needs Dark One, extra Dark Two.
-    4 => [1 => 0, 2 => 2, 3 => 1, 4 => 1],
-];
+ok(count($requesterOpps)===2,'Requester should see both players who can supply Barbarian');
 
-foreach ($inventory as $playerId => $quantities) {
-    foreach ($quantities as $cardId => $qty) {
-        $stmt = $pdo->prepare(
-            'INSERT INTO player_cards (player_id, card_id, owned_qty) VALUES (?, ?, ?)'
+foreach($requesterOpps as $opp){
+    ok((int)$opp['receive_card_id']===1,'requested card must be Barbarian');
+    ok($opp['category']==='Elixir','trade category must be Elixir');
+    ok(count($opp['offer_choices'])===1,'Requester should have one Elixir offer choice');
+    ok((int)$opp['offer_choices'][0]['card_id']===2,'Requester should offer Archer');
+    ok($opp['offer_choices'][0]['category']===$opp['category'],'offer and request must be same group');
+}
+
+// Donor has no needs, so Donor should not be bothered with a requester-facing opportunity.
+$donorRequests=array_filter(
+    $result['opportunities']??[],
+    static fn(array $o):bool=>(int)$o['requester_id']===2
+);
+ok(count($donorRequests)===0,'Donor with no needs should have no player-facing requests');
+
+foreach($result['opportunities']??[] as $opp){
+    foreach($opp['offer_choices']??[] as $offer){
+        ok(
+            (string)$offer['category']===(string)$opp['category'],
+            'all offer choices must remain in the requested card group'
         );
-        $stmt->execute([$playerId, $cardId, $qty]);
     }
 }
 
-$optimizer = new GlobalTradeOptimizer($pdo);
-$result = $optimizer->optimize();
-
-assertTrue(
-    ($result['optimizer_mode'] ?? '') === 'group-constrained-bilateral',
-    'optimizer must run in group-constrained-bilateral mode'
-);
-
-assertTrue(
-    (int)$result['trade_count'] === 1,
-    'fixture should produce exactly one executable same-group trade'
-);
-
-$cardCategory = [];
-foreach ($cards as [$id, $_name, $category, $_required]) {
-    $cardCategory[(int)$id] = $category;
-}
-
-foreach ($result['trade_units'] as $trade) {
-    $category = (string)$trade['category'];
-    $aCard = (int)$trade['player_a_gives_card_id'];
-    $bCard = (int)$trade['player_b_gives_card_id'];
-
-    assertTrue(
-        ($cardCategory[$aCard] ?? null) === $category,
-        "player A card {$aCard} must match trade category {$category}"
-    );
-    assertTrue(
-        ($cardCategory[$bCard] ?? null) === $category,
-        "player B card {$bCard} must match trade category {$category}"
-    );
-    assertTrue(
-        ($cardCategory[$aCard] ?? null) === ($cardCategory[$bCard] ?? null),
-        'both sides of every trade must be in the same category'
-    );
-}
-
-// Explicitly prove the tempting CrossA/CrossB relationship was rejected.
-foreach ($result['relationships'] as $relationship) {
-    $ids = [
-        (int)$relationship['player_a_id'],
-        (int)$relationship['player_b_id'],
-    ];
-    sort($ids);
-
-    assertTrue(
-        $ids !== [1, 2],
-        'cross-group-only CrossA/CrossB relationship must not be emitted'
-    );
-}
-
-// Every grouped relationship must also be internally category-consistent.
-foreach ($result['relationships'] as $relationship) {
-    foreach ($relationship['trade_groups'] ?? [] as $group) {
-        $category = (string)$group['category'];
-
-        foreach ($group['trades'] ?? [] as $trade) {
-            assertTrue(
-                ($cardCategory[(int)$trade['player_a_gives_card_id']] ?? null) === $category,
-                'relationship group contains a mismatched player A card'
-            );
-            assertTrue(
-                ($cardCategory[(int)$trade['player_b_gives_card_id']] ?? null) === $category,
-                'relationship group contains a mismatched player B card'
-            );
-        }
-
-        foreach ($group['transfers'] ?? [] as $transfer) {
-            assertTrue(
-                (string)$transfer['category'] === $category,
-                'relationship transfer escaped its category group'
-            );
-        }
-    }
-}
-
-fwrite(
-    STDOUT,
-    "PASS: V8.35 optimizer emitted only executable same-group bilateral trades.\n"
-);
+fwrite(STDOUT,"PASS: V8.42 exposes requester-benefit trades without requiring donor need.\n");

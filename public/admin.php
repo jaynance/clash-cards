@@ -266,7 +266,7 @@ function h(string $value): string
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Clash Cards — Admin</title>
-<!-- Production build: V8.41 All Possible Trades -->
+<!-- Production build: V8.42 Directed Trade Opportunities -->
 <style>
 :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#202124;background:#f6f7f9}
 *{box-sizing:border-box}body{margin:0}.shell{max-width:1240px;margin:0 auto;padding:24px}.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:18px}.topbar h1{margin:0}.topbar a{color:#315da8;text-decoration:none}.notice{padding:11px 14px;border-radius:9px;margin:12px 0}.notice-ok{background:#eef9f0;border:1px solid #a6cfad}.notice-error{background:#fff2f2;border:1px solid #dfa5a5}.warning{background:#fff8e5;border:1px solid #dfc981;color:#5e4a00;padding:11px 14px;border-radius:9px;margin-bottom:18px}.trade-status{display:inline-block;font-size:.78rem;font-weight:800;padding:4px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em}.trade-status-completed{background:#e8f6eb;color:#216b2a}.layout{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:20px}.panel{background:white;border:1px solid #ddd;border-radius:12px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}.players{max-height:76vh;overflow:auto}.player-row{display:block;padding:11px 12px;border:1px solid #e2e2e2;border-radius:9px;margin:8px 0;color:inherit;text-decoration:none}.player-row:hover{background:#f7f9ff;border-color:#b9c8e5}.player-row.active{background:#eef4ff;border-color:#7596d2}.player-name{font-weight:750}.player-meta{color:#666;font-size:.84rem;margin-top:4px}.summary{display:grid;grid-template-columns:repeat(6,minmax(90px,1fr));gap:8px;margin:12px 0 18px}.metric{background:#f6f7f9;border-radius:9px;padding:10px;text-align:center}.metric strong{display:block;font-size:1.15rem}.metric span{display:block;color:#666;font-size:.8rem;margin-top:2px}.category{margin-top:20px}.category h3{margin:0 0 7px}table{border-collapse:collapse;width:100%;background:white}th,td{border-bottom:1px solid #e6e6e6;padding:8px;text-align:left}th{background:#fafafa;position:sticky;top:0}td.num{text-align:right;font-variant-numeric:tabular-nums}.need{font-weight:700;color:#a33}.extra{font-weight:700;color:#18733a}.delete-zone{margin-top:26px;padding:16px;border:1px solid #d9a2a2;background:#fff7f7;border-radius:10px}.delete-zone h3{color:#9a2525;margin-top:0}.delete-form{display:flex;gap:9px;align-items:end;flex-wrap:wrap}.delete-form label{display:grid;gap:5px;flex:1;min-width:220px}.delete-form input{padding:8px;border:1px solid #bbb;border-radius:7px}.danger{background:#b3261e;color:white;border:0;border-radius:7px;padding:9px 13px;font-weight:700;cursor:pointer}.empty{color:#666}@media(max-width:850px){.layout{grid-template-columns:1fr}.players{max-height:none}.summary{grid-template-columns:repeat(3,1fr)}}
@@ -337,10 +337,7 @@ input[type="button"]:disabled{
 <section>
     <h2>All Possible Trades</h2>
     <p class="optimizer-note">
-        This view changes <strong>nothing</strong> in the database and no longer allocates cards through a global optimizer.
-        It shows <strong>every currently possible reciprocal trade</strong>: each player must have an extra the other needs,
-        and both cards must be in the <strong>same card group</strong>. The same extra may therefore appear in more than one
-        possible relationship until a real trade is completed.
+        This view changes <strong>nothing</strong> in the database and does not reserve cards. It shows every currently actionable request: a requester needs a card another player has extra, and the requester has at least one extra from that same card group to offer back. <strong>The donor does not have to need the return card.</strong>
     </p>
 
     <div class="optimizer-summary">
@@ -350,7 +347,7 @@ input[type="button"]:disabled{
         </div>
         <div class="optimizer-card">
             <strong><?= (int)$optimization['players_helped'] ?>/<?= (int)$optimization['players_with_need'] ?></strong>
-            <span>players with possible trades</span>
+            <span>players who can request a trade</span>
         </div>
         <div class="optimizer-card">
             <strong><?= (int)$optimization['fulfilled_units'] ?></strong>
@@ -362,7 +359,7 @@ input[type="button"]:disabled{
         </div>
         <div class="optimizer-card">
             <strong><?= (int)$optimization['reciprocal_relationship_count'] ?>/<?= (int)$optimization['relationship_count'] ?></strong>
-            <span>trade relationships</span>
+            <span>connected player pairs</span>
         </div>
         <div class="optimizer-card">
             <strong><?= (int)$optimization['unmet_units'] ?></strong>
@@ -388,7 +385,7 @@ input[type="button"]:disabled{
     </p>
     <?php endif; ?>
 
-    <h2>Possible trade relationships</h2>
+    <h2>All available trade paths</h2>
     <?php if (!$optimization['relationships']): ?>
         <p class="empty">No reciprocal same-group trades are currently available.</p>
     <?php else: ?>
@@ -411,8 +408,12 @@ input[type="button"]:disabled{
 
             <?php foreach (($relationship['trade_groups'] ?? []) as $tradeGroup): ?>
             <div class="transfer-line">
-                <strong><?= h((string)$tradeGroup['category']) ?></strong>:
-                <?= (int)$tradeGroup['trade_count'] ?> executable trade<?= (int)$tradeGroup['trade_count'] === 1 ? '' : 's' ?>
+                <strong><?= h((string)$tradeGroup['requester_name']) ?></strong>
+                requests from
+                <strong><?= h((string)$tradeGroup['donor_name']) ?></strong>:
+                <?= (int)$tradeGroup['trade_count'] ?>
+                <?= (int)$tradeGroup['trade_count'] === 1 ? 'card' : 'cards' ?>
+                in <?= h((string)$tradeGroup['category']) ?>
             </div>
             <?php endforeach; ?>
         </article>
@@ -420,7 +421,7 @@ input[type="button"]:disabled{
     </div>
     <?php endif; ?>
 
-    <h2>Global possible-trade network</h2>
+    <h2>Global available-trade network</h2>
     <p class="player-meta">
         The full optimized network. Each line is a recommended player-to-player handoff relationship;
         the number is total card units moving between that pair.
@@ -434,7 +435,7 @@ input[type="button"]:disabled{
     <div class="graph-controls">
         <label for="graphPlayer"><strong>Player:</strong></label>
         <select id="graphPlayer"></select>
-        <span class="graph-legend">Shows all of this player's currently possible trade partners, with card details on each relationship.</span>
+        <span class="graph-legend">Shows both requests this player can make and requests other players could make from this player.</span>
     </div>
     <div class="graph-wrap">
         <svg id="playerTradeGraph" viewBox="0 0 1000 460" role="img" aria-label="Selected player possible trade network"></svg>
@@ -445,7 +446,7 @@ input[type="button"]:disabled{
         Click a possible trade or a graph relationship to inspect the cards and create a reciprocal trade proposal.
     </div>
 
-    <h2>Needs without a current trade path</h2>
+    <h2>Needs without an available trade path</h2>
     <?php
         $scarceRows = array_values(array_filter(
             $optimization['scarcity'],
@@ -605,10 +606,11 @@ input[type="button"]:disabled{
               <div class="proposal-option">
                 <div class="proposal-text">
                   <strong>${escapeHtml(group.category)}</strong>:
-                  ${escapeHtml(trade.player_a_name)} gives
-                  <strong>1 × ${escapeHtml(trade.player_a_gives_card_name)}</strong>
-                  and ${escapeHtml(trade.player_b_name)} gives
-                  <strong>1 × ${escapeHtml(trade.player_b_gives_card_name)}</strong>.
+                  ${escapeHtml(trade.requester_id===trade.player_a_id?trade.player_a_name:trade.player_b_name)}
+                  can request
+                  <strong>1 × ${escapeHtml(trade.requester_id===trade.player_a_id?trade.player_b_gives_card_name:trade.player_a_gives_card_name)}</strong>
+                  and offer
+                  <strong>1 × ${escapeHtml(trade.requester_id===trade.player_a_id?trade.player_a_gives_card_name:trade.player_b_gives_card_name)}</strong>.
                 </div>
                 ${proposalForm(r,{
                     from_player_id:trade.player_a_id,
@@ -625,7 +627,7 @@ input[type="button"]:disabled{
 
             return `
               <div class="relationship-side" style="margin-top:10px">
-                <strong>${escapeHtml(group.category)} — ${Number(group.trade_count)} valid trade${Number(group.trade_count)===1?'':'s'}</strong>
+                <strong>${escapeHtml(group.requester_name)} → ${escapeHtml(group.donor_name)} · ${escapeHtml(group.category)} — ${Number(group.trade_count)} requested-card option${Number(group.trade_count)===1?'':'s'}</strong>
                 ${trades}
               </div>`;
         }).join('');
@@ -633,8 +635,8 @@ input[type="button"]:disabled{
         detail.className='relationship-detail';
         detail.innerHTML=`
           <h3>${escapeHtml(r.player_a_name)} ↔ ${escapeHtml(r.player_b_name)}
-              <span class="reciprocal-badge">same-group only</span></h3>
-          <div class="player-meta">${Number(r.trade_count||0)} executable in-game trade${Number(r.trade_count||0)===1?'':'s'} across this relationship.</div>
+              <span class="reciprocal-badge">${r.reciprocal?'two-way':'one-way'} opportunity</span></h3>
+          <div class="player-meta">${Number(r.trade_count||0)} requested-card path${Number(r.trade_count||0)===1?'':'s'} across this player pair. The donor does not have to need the offered card.</div>
           <div class="proposal-options">${groupHtml || '<div class="one-way-note">No executable same-group trades.</div>'}</div>`;
 
         detail.scrollIntoView({behavior:'smooth',block:'nearest'});
@@ -669,7 +671,7 @@ input[type="button"]:disabled{
                 globalSvg,
                 (a.x+b.x)/2,
                 (a.y+b.y)/2-5,
-                [String(r.unit_count)+(r.reciprocal?' ↔':'')],
+                [String(r.trade_count)+' request'+(Number(r.trade_count)===1?'':'s')+(r.reciprocal?' ↔':' →')],
                 {relationshipKey:String(r.pair_key)}
             );
             group.addEventListener('click',()=>selectRelationship(r.pair_key));

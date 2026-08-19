@@ -338,12 +338,38 @@ if ($optimization && $playerId) {
     }
 
     foreach ($optimization['relationships'] as $relationship) {
-        if (
-            (int)$relationship['player_a_id'] === $playerId
-            || (int)$relationship['player_b_id'] === $playerId
-        ) {
-            $optimizedRelationships[] = $relationship;
+        $playerGroups = array_values(array_filter(
+            $relationship['trade_groups'] ?? [],
+            static fn(array $group): bool =>
+                (int)($group['requester_id'] ?? 0) === $playerId
+        ));
+
+        if (!$playerGroups) {
+            continue;
         }
+
+        // Player view is requester-focused. Strip donor-only directions so a
+        // player is not bothered simply because they have an extra someone else needs.
+        $visible = $relationship;
+        $visible['trade_groups'] = $playerGroups;
+        $visible['opportunities'] = [];
+        $visible['transfers'] = [];
+
+        foreach ($playerGroups as $group) {
+            foreach ($group['opportunities'] ?? [] as $opp) {
+                $visible['opportunities'][] = $opp;
+            }
+            foreach ($group['transfers'] ?? [] as $transfer) {
+                $visible['transfers'][] = $transfer;
+            }
+        }
+
+        $visible['trade_count'] = count($visible['opportunities']);
+        $visible['unit_count'] = array_sum(array_map(
+            static fn(array $opp): int => (int)($opp['receive_qty'] ?? 0),
+            $visible['opportunities']
+        ));
+        $optimizedRelationships[] = $visible;
     }
 }
 
@@ -393,7 +419,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.41 All Possible Trades -->
+<!-- Production build: V8.42 Directed Trade Opportunities -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -760,7 +786,7 @@ button.logout-player-button{
 </section>
 <section id="tab-trades" class="tab-panel" data-tab-panel="trades">
 <p class="tab-intro">
-    All currently possible reciprocal trades are shown here. Cards are never reserved by a clan-wide optimizer; if two players can exchange cards from the same Clash card group, the option appears for both players.
+    All trades that can help you are shown here. The other player only needs to have an extra card you need; they do not have to need your return card. You must have an extra card in the same Clash card group to offer back.
 </p>
 
 <h2>Possible trades<?php if ($tradePlayer): ?> — <?= h((string)$tradePlayer['display_name']) ?><?php endif; ?></h2>
@@ -779,45 +805,54 @@ button.logout-player-button{
     Scan/save all card pages first.
 </div>
 <?php elseif (!$optimizedRelationships): ?>
-<p>No reciprocal same-group trades are currently available for this player.</p>
+<p>No trade opportunities currently match this player's needs and same-group extras.</p>
 <?php else: ?>
 <?php
     $optimizedGiveUnits = 0;
     $optimizedReceiveUnits = 0;
-    $optimizedReciprocalCount = 0;
+    $optimizedReciprocalCount = count($optimizedRelationships);
+
+    $seenGiveOptions = [];
+    $seenReceiveOptions = [];
 
     foreach ($optimizedRelationships as $relationship) {
-        if (!empty($relationship['reciprocal'])) {
-            $optimizedReciprocalCount++;
-        }
-        foreach ($relationship['transfers'] as $transfer) {
-            if ((int)$transfer['from_player_id'] === $playerId) {
-                $optimizedGiveUnits += (int)$transfer['qty'];
-            }
-            if ((int)$transfer['to_player_id'] === $playerId) {
-                $optimizedReceiveUnits += (int)$transfer['qty'];
+        foreach ($relationship['trade_groups'] ?? [] as $group) {
+            foreach ($group['transfers'] ?? [] as $transfer) {
+                if ((int)$transfer['from_player_id'] === $playerId) {
+                    $seenGiveOptions[(string)$transfer['category'] . '|' . (int)$transfer['card_id']] = true;
+                }
+                if ((int)$transfer['to_player_id'] === $playerId) {
+                    $seenReceiveOptions[
+                        (int)$transfer['from_player_id'] . '|' .
+                        (string)$transfer['category'] . '|' .
+                        (int)$transfer['card_id']
+                    ] = true;
+                }
             }
         }
     }
+
+    $optimizedGiveUnits = count($seenGiveOptions);
+    $optimizedReceiveUnits = count($seenReceiveOptions);
 ?>
 
 <div class="player-opt-summary">
     <div class="player-opt-metric"><strong><?= count($optimizedRelationships) ?></strong><span>people to coordinate with</span></div>
-    <div class="player-opt-metric"><strong><?= $optimizedGiveUnits ?></strong><span>possible cards to give</span></div>
-    <div class="player-opt-metric"><strong><?= $optimizedReceiveUnits ?></strong><span>possible cards to receive</span></div>
-    <div class="player-opt-metric"><strong><?= $optimizedReciprocalCount ?></strong><span>trade partners</span></div>
+    <div class="player-opt-metric"><strong><?= $optimizedGiveUnits ?></strong><span>same-group offer choices</span></div>
+    <div class="player-opt-metric"><strong><?= $optimizedReceiveUnits ?></strong><span>available requested cards</span></div>
+    <div class="player-opt-metric"><strong><?= $optimizedReciprocalCount ?></strong><span>players who can help you</span></div>
 </div>
 
 <div class="player-opt-note">
-    Nothing is allocated or reserved. Every relationship below is a currently possible reciprocal trade in the same card group. Multiple players may see the same extra as an option; whoever completes a trade first changes what is possible next.
+    Nothing is allocated or reserved. These are requester-focused opportunities: the other player has something you need, and you have at least one same-group extra you can offer. The other player does not have to need your card.
 </div>
 
-<h3>My possible-trade network</h3>
+<h3>My available-trade network</h3>
 <div class="player-network-wrap">
     <svg id="playerOptimizedGraph" viewBox="0 0 1000 440" role="img" aria-label="Possible trade network for logged-in player"></svg>
 </div>
 
-<h3>Possible trade partners</h3>
+<h3>Players who can help you</h3>
 <div class="optimized-relations">
 <?php foreach ($optimizedRelationships as $relationship): ?>
 <?php
@@ -827,13 +862,13 @@ button.logout-player-button{
 ?>
 <article class="optimized-relation" data-relationship-key="<?= h((string)$relationship['pair_key']) ?>" tabindex="0">
     <h3>
-        <?= h((string)$tradePlayer['display_name']) ?> ↔ <?= h($otherPlayerName) ?>
-        <?php if (!empty($relationship['reciprocal'])): ?><span class="reciprocal-badge">reciprocal</span><?php endif; ?>
+        <?= h((string)$tradePlayer['display_name']) ?> requests from <?= h($otherPlayerName) ?>
+        <span class="reciprocal-badge">available</span>
     </h3>
     <?php foreach (($relationship['trade_groups'] ?? []) as $tradeGroup): ?>
     <div class="optimized-transfer">
         <strong><?= h((string)$tradeGroup['category']) ?></strong> —
-        <?= (int)$tradeGroup['trade_count'] ?> valid trade<?= (int)$tradeGroup['trade_count'] === 1 ? '' : 's' ?>
+        <?= (int)$tradeGroup['trade_count'] ?> card<?= (int)$tradeGroup['trade_count'] === 1 ? '' : 's' ?> you can request
     </div>
     <?php endforeach; ?>
 </article>
@@ -842,7 +877,7 @@ button.logout-player-button{
 
 <h3>Trade detail</h3>
 <div id="playerOptimizerDetail" class="optimizer-detail empty">
-    Click a person, graph edge, or trade partner to see every currently possible same-group exchange.
+    Click a person or graph edge to see what they can give you and which same-group extras you can offer back.
 </div>
 <?php endif; ?>
 
@@ -1110,7 +1145,7 @@ button.logout-player-button{
     others.forEach(o=>{
         const p=pos.get(o.id),r=o.relationship,key=String(r.pair_key),line=make('line',{x1:center.x,y1:center.y,x2:p.x,y2:p.y,class:'pgraph-edge'});
         line.addEventListener('click',()=>showDetail(key));svg.appendChild(line);
-        addLabel(center.x+(p.x-center.x)*.65,center.y+(p.y-center.y)*.65,r.transfers.map(t=>(Number(t.from_player_id)===playerId?'→':'←')+` ${t.qty}× ${t.card_name}`),key);
+        addLabel(center.x+(p.x-center.x)*.65,center.y+(p.y-center.y)*.65,r.transfers.filter(t=>Number(t.to_player_id)===playerId).map(t=>`← ${t.qty}× ${t.card_name}`),key);
     });
     addNode(playerId,playerName,center.x,center.y,true);
     others.forEach(o=>{const p=pos.get(o.id);addNode(o.id,o.name,p.x,p.y,false,String(o.relationship.pair_key));});
@@ -1176,7 +1211,7 @@ button.logout-player-button{
         }).join('');
 
         detail.className='optimizer-detail';
-        detail.innerHTML=`<h3>${esc(playerName)} ↔ ${esc(other.name)} <span class="reciprocal-badge">same-group only</span></h3>${action || '<div class="one-way-explain">No executable same-group trade is available in this relationship.</div>'}`;
+        detail.innerHTML=`<h3>${esc(playerName)} requests from ${esc(other.name)} <span class="reciprocal-badge">available</span></h3>${action || '<div class="one-way-explain">No requester-focused trade is available in this relationship.</div>'}`;
 
         detail.querySelectorAll('[data-trade-builder]').forEach(builder=>{
           const groupIndex=Number(builder.dataset.groupIndex);
