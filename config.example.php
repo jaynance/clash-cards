@@ -11,7 +11,11 @@ declare(strict_types=1);
 
 return [
     'app' => [
-        // Keep false on the hosted beta.
+        // Displayed in the banner at the top of the player and Admin pages.
+        // Change this to your own Clash of Clans clan name.
+        'clan_name' => 'Whiskey Morning',
+
+        // Keep false on the hosted beta / production site.
         'debug' => false,
 
         // This directory must be writable by PHP.
