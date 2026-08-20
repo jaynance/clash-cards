@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 /*
- * V8.25 production configuration template.
+ * Production configuration template.
  *
  * Copy this file to config.php and fill in the real values.
  * NEVER put config.php inside public/.

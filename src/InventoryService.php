@@ -25,12 +25,29 @@ final class InventoryService
     public function getPlayer(int $playerId): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id, display_name FROM players WHERE id = :player_id'
+            'SELECT p.id, p.display_name, p.created_at, MAX(pc.updated_at) AS last_updated
+             FROM players p
+             LEFT JOIN player_cards pc ON pc.player_id = p.id
+             WHERE p.id = :player_id
+             GROUP BY p.id, p.display_name, p.created_at'
         );
         $stmt->execute([':player_id' => $playerId]);
 
         $row = $stmt->fetch();
-        return $row ?: null;
+        if (!$row) {
+            return null;
+        }
+
+        $raw = $row['last_updated'] ?? $row['created_at'] ?? null;
+        $row['last_updated_formatted'] = '';
+        if ($raw) {
+            $ts = strtotime((string)$raw);
+            if ($ts !== false) {
+                $row['last_updated_formatted'] = date('D M j g:i A', $ts);
+            }
+        }
+
+        return $row;
     }
 
     public function getCards(): array

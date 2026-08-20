@@ -1,4 +1,4 @@
-# Clash Cards V8.25 — Production Deployment
+# Clash Cards Version 8.43 — Production Deployment
 
 This is a FULL production package for a small friends-and-family beta.
 
@@ -80,7 +80,7 @@ Fill in the database values.
 
 ### Clan name / site banner
 
-V8.38 adds a clan banner to the player site and Admin pages. Set the displayed
+Version 8.43 adds a clan banner to the player site and Admin pages. Set the displayed
 clan name in `config.php`:
 
     'app' => [
@@ -150,7 +150,7 @@ your hosting panel provides that option.
 
 ## 7. Production error behavior
 
-V8.25:
+Version 8.43:
 - disables PHP error display
 - logs errors instead
 - replaces uncaught exception details with a generic error page
@@ -185,15 +185,15 @@ Before giving the URL to friends:
 The scanner currently loads Tesseract.js from jsDelivr over HTTPS.
 
 This means testers' browsers need internet access to that CDN. The actual card
-screenshots are processed client-side by the scanner code; V8.25 does not add a
+screenshots are processed client-side by the scanner code; Version 8.43 does not add a
 server-side screenshot-upload archive.
 
 If you later want the scanner to work without a third-party CDN, we can vendor
 the Tesseract browser files locally in a future release.
 
-## 10. Updating after V8.25
+## 10. Updating after Version 8.43
 
-V8.25 is a full baseline production package.
+Version 8.43 is a full baseline production package.
 
 Future releases can go back to the small patch ZIP workflow:
 only changed files, with their correct project-relative paths.
@@ -202,11 +202,4 @@ Do not overwrite production config.php with a template during updates.
 
 ## Build versions
 
-Production package: V8.25 — Friends-and-Family Beta
-Player workflow/UI: V8.24
-Admin optimizer/UI: V8.23
-Global optimizer: V8.22
-Scanner: V8.15
-
-The mixed component versions are intentional: later releases changed workflow
-code without changing the scanner itself.
+Production package: Version 8.43

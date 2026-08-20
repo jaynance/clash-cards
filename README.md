@@ -1,4 +1,4 @@
-# Clash Cards V8.25 Production Baseline
+# Clash Cards Version 8.43 Production Baseline
 
 This ZIP is intentionally different from the incremental patch ZIPs:
 it is a complete deployable baseline for a new hosted environment.

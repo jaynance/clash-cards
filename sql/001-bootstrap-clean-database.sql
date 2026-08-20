@@ -1,4 +1,4 @@
--- Clash Cards V8.25 clean production bootstrap
+-- Clash Cards clean production bootstrap
 -- Intended for a NEW/EMPTY MySQL database.
 -- Import this file once through phpMyAdmin or the mysql client.
 

@@ -1,8 +1,10 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/Production.php';
+
 /**
- * V8.42 Directed Trade Opportunity Builder
+ * Directed Trade Opportunity Builder
  *
  * A player-facing opportunity exists when:
  *   1. Requester A needs card X.
@@ -28,20 +30,32 @@ final class GlobalTradeOptimizer
         $cardCount=(int)$this->pdo->query('SELECT COUNT(*) FROM cards')->fetchColumn();
 
         $playerRows=$this->pdo->query(
-            'SELECT p.id,p.display_name,COUNT(DISTINCT pc.card_id) AS saved_card_rows
+            'SELECT p.id,p.display_name,p.created_at,
+                    COUNT(DISTINCT pc.card_id) AS saved_card_rows,
+                    MAX(pc.updated_at) AS last_updated
              FROM players p
              LEFT JOIN player_cards pc ON pc.player_id=p.id
-             GROUP BY p.id,p.display_name
+             GROUP BY p.id,p.display_name,p.created_at
              ORDER BY LOWER(p.display_name),p.id'
         )->fetchAll();
 
         $eligible=[];
         $excluded=[];
         foreach($playerRows as $row){
+            $lastUpdatedRaw = $row['last_updated'] ?? $row['created_at'] ?? null;
+            $lastUpdatedFormatted = '';
+            if ($lastUpdatedRaw) {
+                $ts = strtotime((string)$lastUpdatedRaw);
+                if ($ts !== false) {
+                    $lastUpdatedFormatted = date('D M j g:i A', $ts);
+                }
+            }
             $p=[
                 'id'=>(int)$row['id'],
                 'name'=>(string)$row['display_name'],
                 'saved_card_rows'=>(int)$row['saved_card_rows'],
+                'last_updated'=>$lastUpdatedRaw ? (string)$lastUpdatedRaw : null,
+                'last_updated_formatted'=>$lastUpdatedFormatted,
             ];
             if($cardCount>0 && $p['saved_card_rows']===$cardCount){
                 $eligible[$p['id']]=$p;
@@ -130,8 +144,12 @@ final class GlobalTradeOptimizer
                         'opportunity_no'=>count($opportunities)+1,
                         'requester_id'=>(int)$requesterId,
                         'requester_name'=>$eligible[$requesterId]['name'],
+                        'requester_last_updated'=>$eligible[$requesterId]['last_updated'] ?? null,
+                        'requester_last_updated_formatted'=>$eligible[$requesterId]['last_updated_formatted'] ?? '',
                         'donor_id'=>$donorId,
                         'donor_name'=>$donor['name'],
+                        'donor_last_updated'=>$donor['last_updated'] ?? null,
+                        'donor_last_updated_formatted'=>$donor['last_updated_formatted'] ?? '',
                         'category'=>$category,
                         'receive_card_id'=>(int)$neededCardId,
                         'receive_card_name'=>$cards[$neededCardId]['name'],
@@ -151,8 +169,12 @@ final class GlobalTradeOptimizer
                             'pair_key'=>$pairKey,
                             'player_a_id'=>$a,
                             'player_a_name'=>$eligible[$a]['name'],
+                            'player_a_last_updated'=>$eligible[$a]['last_updated'] ?? null,
+                            'player_a_last_updated_formatted'=>$eligible[$a]['last_updated_formatted'] ?? '',
                             'player_b_id'=>$b,
                             'player_b_name'=>$eligible[$b]['name'],
+                            'player_b_last_updated'=>$eligible[$b]['last_updated'] ?? null,
+                            'player_b_last_updated_formatted'=>$eligible[$b]['last_updated_formatted'] ?? '',
                             'opportunities'=>[],
                             'trade_groups'=>[],
                             'transfers'=>[],
@@ -172,8 +194,12 @@ final class GlobalTradeOptimizer
                     $r['directions'][$directionKey]=[
                         'requester_id'=>(int)$requesterId,
                         'requester_name'=>$eligible[$requesterId]['name'],
+                        'requester_last_updated'=>$eligible[$requesterId]['last_updated'] ?? null,
+                        'requester_last_updated_formatted'=>$eligible[$requesterId]['last_updated_formatted'] ?? '',
                         'donor_id'=>$donorId,
                         'donor_name'=>$donor['name'],
+                        'donor_last_updated'=>$donor['last_updated'] ?? null,
+                        'donor_last_updated_formatted'=>$donor['last_updated_formatted'] ?? '',
                     ];
 
                     $groupKey=$directionKey.'|'.$category;
@@ -182,8 +208,12 @@ final class GlobalTradeOptimizer
                             'category'=>$category,
                             'requester_id'=>(int)$requesterId,
                             'requester_name'=>$eligible[$requesterId]['name'],
+                            'requester_last_updated'=>$eligible[$requesterId]['last_updated'] ?? null,
+                            'requester_last_updated_formatted'=>$eligible[$requesterId]['last_updated_formatted'] ?? '',
                             'donor_id'=>$donorId,
                             'donor_name'=>$donor['name'],
+                            'donor_last_updated'=>$donor['last_updated'] ?? null,
+                            'donor_last_updated_formatted'=>$donor['last_updated_formatted'] ?? '',
                             'opportunities'=>[],
                             'transfers'=>[],
                             'trades'=>[],
@@ -337,7 +367,7 @@ final class GlobalTradeOptimizer
         $reachableUnits=array_sum($reachableByCard);
 
         return [
-            'optimizer_version'=>'V8.42',
+            'optimizer_version'=>APP_VERSION,
             'optimizer_mode'=>'directed-requester-benefit',
             'card_count'=>$cardCount,
             'eligible_players'=>array_values($eligible),
@@ -378,7 +408,7 @@ final class GlobalTradeOptimizer
     private function emptyResult(int $cardCount,array $eligible,array $excluded):array
     {
         return [
-            'optimizer_version'=>'V8.42',
+            'optimizer_version'=>APP_VERSION,
             'optimizer_mode'=>'directed-requester-benefit',
             'card_count'=>$cardCount,
             'eligible_players'=>array_values($eligible),

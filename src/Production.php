@@ -1,8 +1,14 @@
 <?php
 declare(strict_types=1);
 
+if (!defined('APP_VERSION')) {
+    define('APP_VERSION', '8.43');
+}
+
 final class Production
 {
+    public const VERSION = APP_VERSION;
+
     public static function configure(array $appConfig = []): void
     {
         $debug = (bool)($appConfig['debug'] ?? false);

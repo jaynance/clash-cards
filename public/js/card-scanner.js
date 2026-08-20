@@ -1,6 +1,7 @@
-const SCANNER_VERSION = "V8.39";
+const APP_VERSION = "8.43";
+const SCANNER_VERSION = APP_VERSION;
 const SCANNER_BUILD = "Login Name Warning";
-const SCANNER_BUILD_ID = "v8.39-login-name-warning";
+const SCANNER_BUILD_ID = `v${APP_VERSION}-login-name-warning`;
 
 function scannerVersionLine() {
   return `SCANNER | version=${SCANNER_VERSION} | build="${SCANNER_BUILD}" | id=${SCANNER_BUILD_ID}`;

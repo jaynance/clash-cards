@@ -419,7 +419,7 @@ function h(string $value): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Clash Cards Matchmaker</title>
-<!-- Production build: V8.42 Directed Trade Opportunities -->
+<!-- Production build: Version <?= htmlspecialchars(APP_VERSION, ENT_QUOTES, 'UTF-8') ?> Directed Trade Opportunities -->
 <style>
 body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:1100px;margin:40px auto;padding:0 20px 50px;background:#f7f7f9;color:#222}
 h1{margin-bottom:8px}h2{margin-top:34px}
@@ -1118,6 +1118,7 @@ button.logout-player-button{
 (function(){
     const playerId=<?= (int)$playerId ?>;
     const playerName=<?= json_encode((string)($tradePlayer['display_name'] ?? '')) ?>;
+    const playerLastUpdatedFormatted=<?= json_encode((string)($tradePlayer['last_updated_formatted'] ?? '')) ?>;
     const relationships=<?= json_encode($optimizedRelationships, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?>;
     const svg=document.getElementById('playerOptimizedGraph');
     const detail=document.getElementById('playerOptimizerDetail');
@@ -1125,7 +1126,9 @@ button.logout-player-button{
     const ns='http://www.w3.org/2000/svg';
     const make=(tag,attrs={})=>{const el=document.createElementNS(ns,tag);Object.entries(attrs).forEach(([k,v])=>el.setAttribute(k,String(v)));return el;};
     const byKey=new Map(relationships.map(r=>[String(r.pair_key),r]));
-    const otherFor=r=>Number(r.player_a_id)===playerId?{id:Number(r.player_b_id),name:String(r.player_b_name)}:{id:Number(r.player_a_id),name:String(r.player_a_name)};
+    const otherFor=r=>Number(r.player_a_id)===playerId
+        ? {id:Number(r.player_b_id),name:String(r.player_b_name),lastUpdatedFormatted:String(r.player_b_last_updated_formatted||'')}
+        : {id:Number(r.player_a_id),name:String(r.player_a_name),lastUpdatedFormatted:String(r.player_a_last_updated_formatted||'')};
     const esc=v=>String(v).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[ch]));
 
     function addLabel(x,y,lines,key){
@@ -1135,9 +1138,20 @@ button.logout-player-button{
         g.insertBefore(make('rect',{x:b.x-6,y:b.y-4,width:b.width+12,height:b.height+8,rx:5,ry:5,class:'pgraph-label-bg'}),text);
         g.addEventListener('click',()=>showDetail(key));
     }
-    function addNode(id,name,x,y,center=false,key=null){
-        const g=make('g');g.append(make('circle',{cx:x,cy:y,r:center?42:38,class:'pgraph-node '+(center?'pgraph-node-center':'')}),make('text',{x,y,class:'pgraph-node-label'}));
-        g.lastChild.textContent=name.length>14?name.slice(0,13)+'…':name;svg.appendChild(g);if(key)g.addEventListener('click',()=>showDetail(key));
+    function addNode(id,name,x,y,center=false,key=null,lastUpdatedFormatted=''){
+        const g=make('g');
+        g.append(
+            make('circle',{cx:x,cy:y,r:center?42:38,class:'pgraph-node '+(center?'pgraph-node-center':'')}),
+            make('text',{x,y,class:'pgraph-node-label'})
+        );
+        g.lastChild.textContent=name.length>14?name.slice(0,13)+'…':name;
+        if(lastUpdatedFormatted){
+            const title=make('title');
+            title.textContent=`Last updated ${lastUpdatedFormatted}`;
+            g.appendChild(title);
+        }
+        svg.appendChild(g);
+        if(key)g.addEventListener('click',()=>showDetail(key));
     }
 
     const center={x:500,y:220},others=relationships.map(r=>({...otherFor(r),relationship:r})),radius=180,pos=new Map();
@@ -1147,8 +1161,8 @@ button.logout-player-button{
         line.addEventListener('click',()=>showDetail(key));svg.appendChild(line);
         addLabel(center.x+(p.x-center.x)*.65,center.y+(p.y-center.y)*.65,r.transfers.filter(t=>Number(t.to_player_id)===playerId).map(t=>`← ${t.qty}× ${t.card_name}`),key);
     });
-    addNode(playerId,playerName,center.x,center.y,true);
-    others.forEach(o=>{const p=pos.get(o.id);addNode(o.id,o.name,p.x,p.y,false,String(o.relationship.pair_key));});
+    addNode(playerId,playerName,center.x,center.y,true,null,playerLastUpdatedFormatted);
+    others.forEach(o=>{const p=pos.get(o.id);addNode(o.id,o.name,p.x,p.y,false,String(o.relationship.pair_key),o.lastUpdatedFormatted);});
 
     function showDetail(key){
         const r=byKey.get(String(key));if(!r||!detail)return;
@@ -1211,7 +1225,8 @@ button.logout-player-button{
         }).join('');
 
         detail.className='optimizer-detail';
-        detail.innerHTML=`<h3>${esc(playerName)} requests from ${esc(other.name)} <span class="reciprocal-badge">available</span></h3>${action || '<div class="one-way-explain">No requester-focused trade is available in this relationship.</div>'}`;
+        const updatedLabel=other.lastUpdatedFormatted?` (last updated ${esc(other.lastUpdatedFormatted)})`:'';
+        detail.innerHTML=`<h3>${esc(playerName)} requests from ${esc(other.name)}${updatedLabel} <span class="reciprocal-badge">available</span></h3>${action || '<div class="one-way-explain">No requester-focused trade is available in this relationship.</div>'}`;
 
         detail.querySelectorAll('[data-trade-builder]').forEach(builder=>{
           const groupIndex=Number(builder.dataset.groupIndex);
