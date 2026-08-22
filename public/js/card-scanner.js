@@ -1,16 +1,15 @@
-const APP_VERSION = "8.43";
-const SCANNER_VERSION = APP_VERSION;
-const SCANNER_BUILD = "Login Name Warning";
-const SCANNER_BUILD_ID = `v${APP_VERSION}-login-name-warning`;
+const APP_VERSION = "8.44";
+const APP_BUILD = "Scanner fix";
+const APP_BUILD_ID = `v${APP_VERSION}-${APP_BUILD}`;
 
 function scannerVersionLine() {
-  return `SCANNER | version=${SCANNER_VERSION} | build="${SCANNER_BUILD}" | id=${SCANNER_BUILD_ID}`;
+  return `SCANNER | version=${APP_VERSION} | build="${APP_BUILD}"`;
 }
 
 window.CLASH_CARD_SCANNER_VERSION = {
-  version: SCANNER_VERSION,
-  build: SCANNER_BUILD,
-  id: SCANNER_BUILD_ID
+  version: APP_VERSION,
+  build: APP_BUILD,
+  id: APP_BUILD_ID
 };
 
 console.info(scannerVersionLine());
@@ -361,20 +360,30 @@ async function run() {
           const usernameResult=await readUsernameForWarning(worker,allImages[i]);
           const detected=normalizeDetectedUsername(usernameResult.cleaned);
           const normalizedDetected=normalizeUsernameForLoginCheck(detected);
-          const matches=
-            normalizedLoggedIn!=="" &&
-            normalizedDetected!=="" &&
-            normalizedLoggedIn===normalizedDetected;
+          const confidence=Number(usernameResult.confidence||0);
+          const usable=
+            confidence>=60 &&
+            normalizedDetected.length>=4 &&
+            /[a-z]/i.test(normalizedDetected);
+
+          const matches=usable
+            ? (
+                normalizedLoggedIn!=="" &&
+                normalizedDetected!=="" &&
+                normalizedLoggedIn===normalizedDetected
+              )
+            : null;
 
           usernameChecks.push({
             file:files[i]?.name||`Screenshot ${i+1}`,
             detected,
-            confidence:usernameResult.confidence,
+            confidence,
+            usable,
             matches
           });
 
           debug.push(
-            `USERNAME_CHECK | file=${JSON.stringify(files[i]?.name||`Screenshot ${i+1}`)} | loggedIn=${JSON.stringify(loggedInPlayerName)} | ocr=${JSON.stringify(detected)} | normalizedLoggedIn=${JSON.stringify(normalizedLoggedIn)} | normalizedOcr=${JSON.stringify(normalizedDetected)} | match=${matches?"yes":"no"} | confidence=${usernameResult.confidence.toFixed(1)} | source=${usernameResult.source} | variant=${usernameResult.variant}`
+            `USERNAME_CHECK | file=${JSON.stringify(files[i]?.name||`Screenshot ${i+1}`)} | loggedIn=${JSON.stringify(loggedInPlayerName)} | ocr=${JSON.stringify(detected)} | normalizedLoggedIn=${JSON.stringify(normalizedLoggedIn)} | normalizedOcr=${JSON.stringify(normalizedDetected)} | usable=${usable?"yes":"no"} | match=${matches===null?"ignored":(matches?"yes":"no")} | confidence=${confidence.toFixed(1)} | source=${usernameResult.source} | variant=${usernameResult.variant}`
           );
         }catch(e){
           usernameChecks.push({
@@ -1724,7 +1733,12 @@ function extractBadge(img,box){
       const hsv=rgbToHsv(d[i],d[i+1],d[i+2]);
 
       // Yellow/gold badge face.
-      if(hsv.h>=28&&hsv.h<=75&&hsv.s>.38&&hsv.v>.50){
+      //
+      // V8.43 patch: iPhone captures can shift the orange edge of the badge
+      // below H=28. That split several real x3/x5 badges into pieces and made
+      // extractBadge() return null. Keep the lower bound conservative enough
+      // to avoid red/orange card frames while accepting the gold badge edge.
+      if(hsv.h>=15&&hsv.h<=82&&hsv.s>.32&&hsv.v>.46){
         mask[y*sw+x]=1;
       }
     }
@@ -2247,6 +2261,7 @@ async function readBadgeQuantityCanvas(worker,baseCanvas,minConfidence=55){
 
   const variants=["badge-dark","raw","gray","threshold-dark","threshold-light"];
   const attempts=[];
+  const votes=new Map();
 
   for(const variant of variants){
     const c=preprocessBadgeForOcr(baseCanvas,variant);
@@ -2256,28 +2271,97 @@ async function readBadgeQuantityCanvas(worker,baseCanvas,minConfidence=55){
 
     attempts.push(`${variant}:${txt}:${ocrConfidence.toFixed(1)}`);
 
-    let m=txt.match(/[xX][^0-9]*([2-9][0-9]?)/);
-    if(!m) m=txt.match(/^([2-9][0-9]?)$/);
-
+    let explicitX=false;
+    let m=txt.match(/[xX][^0-9]*([2-9])/);
     if(m){
-      const qty=Number(m[1]);
+      explicitX=true;
+    }else{
+      m=txt.match(/^([2-9])$/);
+    }
 
-      // The prior build produced many bogus "7" values. Be much more
-      // conservative: OCR must have meaningful confidence before it can
-      // create a quantity that templates did not support.
-      if(qty>=2&&qty<=9 && ocrConfidence>=minConfidence){
-        return {
-          qty,
-          raw:txt,
-          confidence:ocrConfidence>=65?"medium":"low",
-          ocrConfidence,
-          attempts
-        };
-      }
+    if(!m) continue;
+
+    const qty=Number(m[1]);
+    if(qty<2||qty>9) continue;
+
+    const vote=votes.get(qty)||{
+      qty,
+      count:0,
+      explicitXCount:0,
+      bestConfidence:0,
+      examples:[]
+    };
+
+    vote.count++;
+    if(explicitX) vote.explicitXCount++;
+    vote.bestConfidence=Math.max(vote.bestConfidence,ocrConfidence);
+    vote.examples.push(`${variant}:${txt}`);
+    votes.set(qty,vote);
+
+    // Preserve the old high-confidence fast path.
+    if(ocrConfidence>=minConfidence){
+      return {
+        qty,
+        raw:txt,
+        confidence:ocrConfidence>=65?"medium":"low",
+        ocrConfidence,
+        attempts,
+        consensus:`high-confidence:${variant}`
+      };
     }
   }
 
-  return {qty:null,raw:"",confidence:"low",ocrConfidence:0,attempts};
+  // Clash's outlined quantity font frequently makes Tesseract return useful
+  // text with confidence 0. Cross-preprocessing agreement is much more useful
+  // than the reported confidence in that case.
+  const ranked=[...votes.values()].sort((a,b)=>
+    b.count-a.count ||
+    b.explicitXCount-a.explicitXCount ||
+    b.bestConfidence-a.bestConfidence ||
+    a.qty-b.qty
+  );
+
+  if(ranked.length){
+    const best=ranked[0];
+    const second=ranked[1]||null;
+
+    // Two independent preprocessing variants agree on the digit.
+    if(best.count>=2 && (!second || best.count>second.count)){
+      return {
+        qty:best.qty,
+        raw:best.examples.join("|"),
+        confidence:best.count>=3?"medium":"low",
+        ocrConfidence:best.bestConfidence,
+        attempts,
+        consensus:`variant-consensus:${best.count}`
+      };
+    }
+
+    // A single clean "xN" reading is useful when no other variant produces a
+    // conflicting valid digit. This recovers cases like the new x5 Miner.
+    if(
+      best.explicitXCount>=1 &&
+      (!second || second.count===0)
+    ){
+      return {
+        qty:best.qty,
+        raw:best.examples.join("|"),
+        confidence:"low",
+        ocrConfidence:best.bestConfidence,
+        attempts,
+        consensus:"single-explicit-x"
+      };
+    }
+  }
+
+  return {
+    qty:null,
+    raw:"",
+    confidence:"low",
+    ocrConfidence:0,
+    attempts,
+    consensus:"none"
+  };
 }
 
 function preprocessBadgeForOcr(baseCanvas,variant){
@@ -2328,7 +2412,7 @@ function normalizeUsernameForLoginCheck(value){
 function renderUsernameLoginWarning(checks,loggedInName){
   if(!usernameReviewWarning) return;
 
-  const readable=checks.filter(c=>c.detected);
+  const readable=checks.filter(c=>c.detected && c.usable!==false);
   const mismatches=readable.filter(c=>c.matches===false);
 
   if(!mismatches.length){
@@ -2360,6 +2444,15 @@ async function readUsernameForWarning(worker,img){
   });
 
   const crops=[
+    // Mobile/tablet-style captures place the player name much closer to the
+    // top edge and farther right than our desktop/emulator captures.
+    {
+      name:"name-band-mobile",
+      x:img.naturalWidth*.095,
+      y:img.naturalHeight*.004,
+      w:img.naturalWidth*.105,
+      h:img.naturalHeight*.042
+    },
     {
       name:"name-band-a",
       x:img.naturalWidth*.064,
@@ -2809,7 +2902,7 @@ function getLearnedGlyphs(){
   }catch(e){}
   return {
     schema:1,
-    scanner_version:SCANNER_VERSION,
+    scanner_version:APP_VERSION,
     updated_at:null,
     examples:[]
   };
@@ -2817,7 +2910,7 @@ function getLearnedGlyphs(){
 
 function saveLearnedGlyphs(store){
   store.schema=1;
-  store.scanner_version=SCANNER_VERSION;
+  store.scanner_version=APP_VERSION;
   store.updated_at=new Date().toISOString();
   localStorage.setItem(LEARNING_STORAGE_KEY,JSON.stringify(store));
   updateLearningStatus();
@@ -2867,7 +2960,7 @@ function learnFromReviewedRows(){
       predicted_qty:item.predicted_qty,
       predicted_confidence:item.confidence,
       learned_at:new Date().toISOString(),
-      scanner_version:SCANNER_VERSION
+      scanner_version:APP_VERSION
     });
     added++;
   }
@@ -2905,7 +2998,7 @@ function exportLearnedGlyphs(){
   const payload={
     ...store,
     exported_at:new Date().toISOString(),
-    export_build:SCANNER_BUILD_ID
+    export_build:APP_BUILD_ID
   };
 
   const blob=new Blob(
@@ -3052,6 +3145,25 @@ function render(rows){
       <td>${learnCell}</td>`;
 
     body.appendChild(tr);
+
+    // All scanner values are review suggestions, regardless of whether they
+    // came from OCR, image analysis, learned data, or previous inventory.
+    // Never lock a quantity field: the player must always be able to correct it.
+    const qtyInput=tr.querySelector('input[name^="detected["]');
+    if(qtyInput){
+      qtyInput.disabled=false;
+      qtyInput.readOnly=false;
+      qtyInput.removeAttribute("disabled");
+      qtyInput.removeAttribute("readonly");
+    }
+  }
+
+  // Defensive second pass in case another rendering hook touched an input.
+  for(const qtyInput of body.querySelectorAll('input[name^="detected["]')){
+    qtyInput.disabled=false;
+    qtyInput.readOnly=false;
+    qtyInput.removeAttribute("disabled");
+    qtyInput.removeAttribute("readonly");
   }
 
   review.hidden=rows.length===0;
