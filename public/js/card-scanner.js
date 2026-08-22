@@ -1,5 +1,5 @@
-const APP_VERSION = "8.44";
-const APP_BUILD = "Scanner fix";
+const APP_VERSION = "8.45";
+const APP_BUILD = "Add highlight to changed values after scan";
 const APP_BUILD_ID = `v${APP_VERSION}-${APP_BUILD}`;
 
 function scannerVersionLine() {
@@ -527,6 +527,27 @@ async function run() {
 
     if(!completeScan){
       addMissingPageRows(results,pages,previousInventory,debug);
+    }
+
+    // Mark values that changed specifically because of this scan. Rows filled
+    // from previous inventory are not scan changes.
+    const previousQuantities=previousInventory?.quantities||{};
+    for(const row of results){
+      const key=String(row.card_id);
+      const hasPrevious=Object.prototype.hasOwnProperty.call(previousQuantities,key);
+      row.previous_qty=hasPrevious
+        ? Math.max(0,Number(previousQuantities[key])||0)
+        : null;
+      row.changed_by_scan=
+        !row.fallback &&
+        hasPrevious &&
+        Number(row.owned_qty)!==Number(row.previous_qty);
+
+      if(row.changed_by_scan){
+        debug.push(
+          `CHANGED | ${row.category} | ${row.name} | previous=${row.previous_qty} | scanned=${row.owned_qty} | confidence=${row.confidence}`
+        );
+      }
     }
 
     render(results);
@@ -3124,6 +3145,15 @@ function render(rows){
     const tr=document.createElement("tr");
     if(r.fallback) tr.classList.add("scan-fallback-row");
 
+    if(r.changed_by_scan){
+      tr.classList.add("scan-changed-row");
+      // Inline styling keeps this patch isolated to card-scanner.js and avoids
+      // requiring the user's locally modified index.php/CSS.
+      tr.style.backgroundColor="#e7f7e9";
+      tr.style.boxShadow="inset 4px 0 0 #4f9f5f";
+      tr.title=`Changed by scan: ${r.previous_qty} → ${r.owned_qty}`;
+    }
+
     const learnCell=r.learnable
       ? `<label class="learn-example">
            <input type="checkbox" data-learn-id="${esc(r.learning_id)}">
@@ -3138,9 +3168,12 @@ function render(rows){
           data-learning-qty-id="${esc(r.learning_id)}"
           required></td>
       <td><span class="confidence confidence-${r.confidence}">${
-        r.confidence==="previous" ? "Previous" :
-        r.confidence==="manual" ? "Enter" :
-        cap(r.confidence)
+        (r.changed_by_scan ? "CHANGED · " : "") +
+        (
+          r.confidence==="previous" ? "Previous" :
+          r.confidence==="manual" ? "Enter" :
+          cap(r.confidence)
+        )
       }</span></td>
       <td>${learnCell}</td>`;
 
